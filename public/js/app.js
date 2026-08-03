@@ -1,1198 +1,1292 @@
-// Game Server Dashboard — Frontend logic
-// Connects to Socket.IO for real-time updates, renders server cards, handles actions.
-// Phase 3: player counts, version display, one-click updates.
+// SPNKr — frontend.
+//
+// Cards are built as DOM nodes once and then mutated in place. The previous
+// build reassigned grid.innerHTML on every 10s status poll and every 30s player
+// poll, which threw away hover, focus, text selection and scroll position four
+// times a minute — and forced user-supplied strings through HTML interpolation,
+// where an apostrophe in a server name or password produced a syntactically
+// broken inline onclick handler. Nothing here interpolates user data into
+// markup: values go in via textContent and dataset, handlers via delegation.
 
 const socket = io();
 
-// Track which servers are mid-action so we show transitioning state
-const transitioning = new Set();
+// Servers currently mid-action → the status they held when the action started.
+// Keeping the prior status (rather than a bare flag) is what lets the card drop
+// out of its working state the moment the service actually reaches a *different*
+// settled state, instead of sitting there until a fixed timeout expires. The
+// poll immediately after a click often still reports the old status, so "any
+// terminal status clears it" would flicker.
+const transitioning = new Map();
 
-// Cache server list for schedule modal
+// Servers mid-SteamCMD-update. Separate from `transitioning` because an update
+// is driven by updateStatus events rather than by a click, and it outlives the
+// stop/start cycle inside it.
+const updating = new Set();
+
 let cachedServers = [];
-
-// Cache player data from separate poll (keyed by server id)
 const playerCache = {};
-
-// Privacy mode — hides connect addresses and passwords
 let privacyMode = false;
 
-// Event log pagination state
 let eventOffset = 0;
 const eventLimit = 30;
 
-// --- Socket.IO event handlers ---
+// id -> { root, refs, status } for in-place updates
+const cards = new Map();
 
-socket.on('connect', () => {
-  console.log('Connected to dashboard');
-});
+const $ = id => document.getElementById(id);
 
-socket.on('disconnect', () => {
-  console.log('Disconnected from dashboard');
-});
+// === Socket ==================================================================
 
-socket.on('serverUpdate', (servers) => {
+socket.on('connect', () => document.body.classList.remove('link-down'));
+socket.on('disconnect', () => document.body.classList.add('link-down'));
+
+socket.on('serverUpdate', servers => {
   cachedServers = servers;
-  renderServerCards(servers);
+  renderServers(servers);
   populateServerFilter(servers);
 });
 
-socket.on('systemUpdate', (stats) => {
-  updateSystemStats(stats);
-});
+socket.on('systemUpdate', updateSystemStats);
+socket.on('eventLogged', prependEvent);
 
-socket.on('eventLogged', (event) => {
-  // Prepend new event to the log if visible
-  prependEvent(event);
-});
-
-socket.on('playerUpdate', (players) => {
-  // Cache player data and re-render cards with updated player counts
+socket.on('playerUpdate', players => {
   for (const entry of players) {
-    if (entry.players) {
-      playerCache[entry.id] = entry.players;
+    // null means the query failed — unreachable, not empty. Storing null keeps
+    // the "—/N" vs "0/N" distinction the idle monitor also depends on.
+    playerCache[entry.id] = entry.players || null;
+  }
+  renderServers(cachedServers);
+});
+
+socket.on('updateStatus', data => {
+  // A SteamCMD update stops the service, so the poll would report the server as
+  // plainly "stopped" mid-update. Tracking it here keeps the card in its working
+  // state — and the travelling border — for the whole operation.
+  if (data.serverId) {
+    if (data.status === 'complete' || data.status === 'failed') {
+      updating.delete(data.serverId);
+    } else {
+      updating.add(data.serverId);
     }
+    renderServers(cachedServers);
   }
-  // Re-render cards to show updated player counts
-  if (cachedServers.length > 0) {
-    renderServerCards(cachedServers);
-  }
-});
 
-socket.on('updateStatus', (data) => {
-  // Show toast progress for server updates
-  const statusMessages = {
-    stopping: 'Stopping server for update...',
-    updating: 'Downloading update via SteamCMD...',
-    starting: 'Update complete — restarting server...',
-    complete: `Update complete! Build ${data.build || 'unknown'}`,
-    failed: 'Update failed. Check logs for details.'
+  const messages = {
+    stopping: 'Stopping server for update…',
+    updating: 'Downloading update via SteamCMD…',
+    starting: 'Update applied — restarting…',
+    complete: `Update complete. Build ${data.build || 'unknown'}`,
+    failed: 'Update failed. Check the logs.'
   };
-
-  const message = statusMessages[data.status] || `Update: ${data.status}`;
-  const type = data.status === 'complete' ? 'success' : data.status === 'failed' ? 'error' : 'info';
-  showToast(message, type);
+  const tone = data.status === 'complete' ? 'success'
+    : data.status === 'failed' ? 'error' : 'info';
+  showToast(messages[data.status] || `Update: ${data.status}`, tone);
 });
 
-// Load event log and branding on page load
 document.addEventListener('DOMContentLoaded', () => {
   loadEvents();
   applyBranding();
 });
 
-// Set the header logo and page title from config.json (dashboardName)
 async function applyBranding() {
   try {
     const res = await fetch('/api/branding');
-    const { dashboardName } = await res.json();
-    if (!dashboardName) return;
-    document.title = dashboardName;
-    const logo = document.getElementById('dashboard-logo');
-    if (logo) logo.textContent = dashboardName;
+    const branding = await res.json();
+    lanAddress = branding.lanAddress || null;
+    if (!branding.dashboardName) return;
+    document.title = branding.dashboardName;
+    $('dashboard-logo').textContent = branding.dashboardName;
   } catch {
-    // Keep the static fallback in index.html
+    // Static fallback in index.html stands.
   }
 }
 
-// --- System stats bar ---
+// === System stats ============================================================
 
 function updateSystemStats(stats) {
-  if (stats.cpu) {
-    updateSysBar('sys-cpu', stats.cpu.percent);
-  }
-  if (stats.ram) {
-    updateSysBar('sys-ram', stats.ram.percent, stats.ram.formatted);
-  }
-  if (stats.disk) {
-    updateSysBar('sys-disk', stats.disk.percent, stats.disk.formatted);
-  }
+  if (stats.cpu) setBar('sys-cpu', stats.cpu.percent, `${stats.cpu.percent}%`);
+  if (stats.ram) setBar('sys-ram', stats.ram.percent, stats.ram.formatted);
+  if (stats.disk) setBar('sys-disk', stats.disk.percent, stats.disk.formatted);
 }
 
-function updateSysBar(prefix, percent, label) {
-  const bar = document.getElementById(`${prefix}-bar`);
-  const value = document.getElementById(prefix);
+function setBar(prefix, percent, label) {
+  const bar = $(`${prefix}-bar`);
+  const value = $(prefix);
   if (!bar || !value) return;
 
   bar.style.width = `${percent}%`;
-  bar.className = 'sys-bar-fill';
-  if (percent > 85) bar.classList.add('danger');
-  else if (percent > 70) bar.classList.add('warn');
-
-  value.textContent = label || `${percent}%`;
+  bar.className = 'sys-bar-fill' + (percent > 85 ? ' danger' : percent > 70 ? ' warn' : '');
+  value.textContent = label;
 }
 
-// --- Server card rendering ---
+// === Cards ===================================================================
 
-function renderServerCards(servers) {
-  const grid = document.getElementById('server-grid');
-  if (!grid) return;
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
 
-  const html = servers.map(server => {
-    const isTransitioning = transitioning.has(server.id);
-    const displayStatus = isTransitioning ? 'transitioning' : server.status;
-    const statusClass = getStatusClass(displayStatus);
-    const statusLabel = getStatusLabel(displayStatus);
+function statBlock(label) {
+  const wrap = el('div', 'stat');
+  wrap.append(el('span', 'lbl', label));
+  const value = el('span', 'stat-value', '—');
+  wrap.append(value);
+  return { wrap, value };
+}
 
-    const proc = server.process || {};
-    const ramDisplay = proc.ramFormatted || '\u2014';
-    const uptimeDisplay = proc.uptimeFormatted || '\u2014';
+function buildCard(server) {
+  const root = el('div', 'server-card');
+  root.dataset.id = server.id;
 
-    // If server is now running/stopped, clear transitioning state
-    if (!isTransitioning || server.status === 'running' || server.status === 'stopped') {
-      transitioning.delete(server.id);
+  // --- head ---
+  const head = el('div', 'card-head');
+
+  const tubes = el('div', 'tubes');
+  tubes.append(el('span', 'tube'), el('span', 'tube'));
+
+  const nameBlock = el('div', 'name-block');
+  const gameName = el('span', 'game-name');
+  const sub = el('div', 'name-sub');
+  const displayName = el('span', 'display-name');
+  const statusText = el('span', 'status-text');
+  sub.append(displayName, statusText);
+  nameBlock.append(gameName, sub);
+
+  const controls = el('div', 'card-controls');
+  const primaryBtn = el('button', 'btn btn-sm');
+  primaryBtn.type = 'button';
+  const restartBtn = el('button', 'btn btn-sm', 'Restart');
+  restartBtn.type = 'button';
+  restartBtn.dataset.action = 'restart';
+  controls.append(primaryBtn, restartBtn);
+
+  head.append(tubes, nameBlock, controls);
+
+  // --- glance tier ---
+  const stats = el('div', 'card-stats');
+  const players = statBlock('Players');
+  const ram = statBlock('Memory');
+  const uptime = statBlock('Uptime');
+  stats.append(players.wrap, ram.wrap, uptime.wrap);
+
+  // --- connect ---
+  const connect = el('div', 'card-connect');
+
+  const addrRow = el('div', 'connect-row');
+  const addrBody = el('div', 'connect-body');
+  const addrLabel = el('span', 'lbl', 'Connect');
+  const addrValue = el('span', 'connect-value');
+  addrBody.append(addrLabel, addrValue);
+  const addrCopy = el('button', 'btn btn-sm', 'Copy');
+  addrCopy.type = 'button';
+  addrCopy.dataset.action = 'copy';
+  addrRow.append(addrBody, addrCopy);
+
+  const passRow = el('div', 'connect-row');
+  const passBody = el('div', 'connect-body');
+  passBody.append(el('span', 'lbl', 'Password'));
+  const passValue = el('span', 'connect-value');
+  passBody.append(passValue);
+  const passCopy = el('button', 'btn btn-sm', 'Copy');
+  passCopy.type = 'button';
+  passCopy.dataset.action = 'copy';
+  passRow.append(passBody, passCopy);
+
+  connect.append(addrRow, passRow);
+
+  // --- config tier ---
+  const config = el('div', 'card-config');
+  const summary = el('div', 'config-summary');
+  const chipFixed = el('div', 'chip-fixed');
+  const chipTrack = el('div', 'chip-track');
+  chipTrack.append(el('div', 'chip-run'));
+  summary.append(chipFixed, chipTrack);
+  const configBtn = el('button', 'btn btn-sm', 'Configure');
+  configBtn.type = 'button';
+  configBtn.dataset.action = 'configure';
+  config.append(summary, configBtn);
+
+  root.append(head, stats, connect, config);
+
+  const refs = {
+    tubes, gameName, displayName, statusText, primaryBtn, restartBtn,
+    players: players.value, ram: ram.value, uptime: uptime.value,
+    addrValue, addrCopy, passRow, passValue, passCopy, summary, configBtn
+  };
+
+  return { root, refs, status: null };
+}
+
+function renderServers(servers) {
+  const grid = $('server-grid');
+  if (!grid || !Array.isArray(servers)) return;
+
+  if (servers.length === 0) {
+    if (!grid.querySelector('.grid-message[data-empty]')) {
+      cards.clear();
+      grid.textContent = '';
+      const msg = el('div', 'grid-message');
+      msg.dataset.empty = 'true';
+      msg.append(el('h2', null, 'No servers configured'));
+      const p = el('p');
+      p.append(document.createTextNode('Add entries to the '));
+      p.append(el('code', null, 'servers'));
+      p.append(document.createTextNode(' array in config.json. See docs/ADDING_GAMES.md.'));
+      msg.append(p);
+      grid.append(msg);
+    }
+    return;
+  }
+
+  const emptyMsg = grid.querySelector('.grid-message');
+  if (emptyMsg) emptyMsg.remove();
+
+  const seen = new Set();
+
+  servers.forEach((server, index) => {
+    seen.add(server.id);
+    let card = cards.get(server.id);
+    if (!card) {
+      card = buildCard(server);
+      cards.set(server.id, card);
+    }
+    updateCard(card, server);
+
+    // Keep DOM order in sync with config order without rebuilding.
+    if (grid.children[index] !== card.root) {
+      grid.insertBefore(card.root, grid.children[index] || null);
     }
 
-    const isRunning = server.status === 'running';
-    const isStopped = server.status === 'stopped';
-    const actionsDisabled = isTransitioning;
-
-    // Player count from separate poll cache
-    const pd = playerCache[server.id];
-    const playerCount = pd ? pd.playerCount : null;
-    const playerMax = pd ? (pd.maxPlayers || server.maxPlayers) : server.maxPlayers;
-    const hasPlayers = playerCount !== null && playerCount > 0;
-    const playerDisplay = playerCount !== null ? `${playerCount}/${playerMax}` : `\u2014/${playerMax}`;
-    const playerNames = pd && pd.playerNames && pd.playerNames.length > 0
-      ? pd.playerNames.join(', ')
-      : '';
-    const playerTooltip = playerNames ? ` title="${esc(playerNames)}"` : '';
-
-    // Version info from serverUpdate payload
-    const ver = server.version;
-    const hasSteam = !!server.steamAppId;
-    const updateAvailable = ver && ver.updateAvailable;
-
-    // Build the version row (only for Steam games or Minecraft manual link)
-    let versionHtml = '';
-    if (hasSteam) {
-      if (updateAvailable) {
-        versionHtml = `
-          <div class="card-version">
-            <div class="version-info">
-              <span class="update-badge">Update Available</span>
-            </div>
-            <button class="action-btn btn-update" onclick="triggerUpdate('${server.id}', '${esc(server.name)}')">Update</button>
-          </div>
-        `;
-      } else if (ver && ver.installedBuild) {
-        versionHtml = `
-          <div class="card-version">
-            <div class="version-info">
-              <span class="version-uptodate" title="Build ${ver.installedBuild}">&#10003; Up to date</span>
-            </div>
-          </div>
-        `;
-      } else {
-        versionHtml = `
-          <div class="card-version">
-            <div class="version-info">
-              <span class="version-build">Checking...</span>
-            </div>
-          </div>
-        `;
-      }
-    } else if (server.id === 'minecraft') {
-      versionHtml = `
-        <div class="card-version">
-          <div class="version-info">
-            <span class="version-build">Minecraft Bedrock</span>
-          </div>
-          <a class="update-link" href="https://www.minecraft.net/en-us/download/server/bedrock" target="_blank" rel="noopener">Check for Updates</a>
-        </div>
-      `;
-    } else if (ver && ver.installedBuild) {
-      // Non-Steam server with a static version string
-      versionHtml = `
-        <div class="card-version">
-          <div class="version-info">
-            <span class="version-uptodate" title="${ver.installedBuild}">&#10003; ${ver.installedBuild}</span>
-          </div>
-        </div>
-      `;
+    // Keep the open config panel's Power section in step with the poll, so its
+    // buttons never contradict the card behind it.
+    if (configServerId === server.id && $('config-overlay').classList.contains('open')) {
+      syncPowerSection(server);
     }
+  });
 
-    // Schedule + restart row
-    const schedule = server.schedule;
-    const scheduleHtml = `
-      <div class="card-schedule">
-        <div class="schedule-info${schedule && schedule.active ? ' active' : ''}">
-          <span>${schedule && schedule.active ? 'Scheduled Restart: ' + cronToHuman(schedule.cronExpression) : 'Scheduled Restarts: None.'}</span>
-        </div>
-        <div class="schedule-actions">
-          <button class="schedule-edit-btn" onclick="openSchedule('${server.id}', '${server.name}')">Edit</button>
-        </div>
-      </div>
-    `;
-
-    // Backup row
-    const backupData = server.backup;
-    const hasBackupConfig = backupData && backupData.enabled;
-    const lastBackup = backupData && backupData.lastBackupTime;
-    const backupText = lastBackup
-      ? 'Automatic Backups: ' + formatBackupTime(lastBackup)
-      : 'Automatic Backups: None';
-    const backupBtnText = hasBackupConfig ? 'Manage' : 'Setup';
-    const backupHtml = `
-      <div class="card-backup">
-        <div class="backup-info${hasBackupConfig ? ' active' : ''}">
-          <span>${backupText}</span>
-        </div>
-        <div class="backup-actions">
-          <button class="backup-edit-btn" onclick="openBackup('${server.id}', '${esc(server.name)}')">${backupBtnText}</button>
-        </div>
-      </div>
-    `;
-
-    // Idle shutdown row (reuses backup row styling)
-    const idleHours = server.idleShutdown;
-    const idleHtml = `
-      <div class="card-backup">
-        <div class="backup-info${idleHours ? ' active' : ''}">
-          <span>${idleHours ? 'Idle Shutdown: After ' + formatIdleHours(idleHours) + ' empty' : 'Idle Shutdown: Never'}</span>
-        </div>
-        <div class="backup-actions">
-          <button class="backup-edit-btn" onclick="openIdle('${server.id}', '${esc(server.name)}', ${idleHours || 0})">Edit</button>
-        </div>
-      </div>
-    `;
-
-    return `
-      <div class="server-card status-${statusClass}" data-id="${server.id}">
-        <div class="card-header">
-          <div class="card-header-top">
-            <span class="game-name">${esc(server.name)}</span>
-            <div class="card-header-right">
-              <label class="toggle-switch" title="${server.autoStart ? 'Auto-start ON — starts on boot' : 'Auto-start OFF — manual only'}">
-                <input type="checkbox" ${server.autoStart ? 'checked' : ''} onchange="toggleServer('${server.id}', this.checked)" ${actionsDisabled ? 'disabled' : ''}>
-                <span class="toggle-slider"></span>
-              </label>
-              ${isRunning
-                ? `<button class="btn-filled btn-filled-accent" onclick="serverAction('${server.id}', 'restart')" ${actionsDisabled ? 'disabled' : ''}>Restart</button>`
-                : `<button class="btn-filled btn-filled-green" onclick="serverAction('${server.id}', 'start')" ${actionsDisabled ? 'disabled' : ''}>Start</button>`
-              }
-            </div>
-          </div>
-          <div class="card-header-sub">
-            <span class="display-name">${esc(server.displayName)}</span>
-            <span class="status-text ${server.status}${isTransitioning ? ' restarting' : ''}">
-              <span class="status-dot"></span>
-              ${statusLabel}
-            </span>
-          </div>
-        </div>
-
-        <div class="card-stats">
-          <div class="stat-item">
-            <span class="stat-label">RAM</span>
-            <span class="stat-value${!proc.ramFormatted ? ' dim' : ''}">${ramDisplay}</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">Uptime</span>
-            <span class="stat-value${!proc.uptimeFormatted ? ' dim' : ''}">${uptimeDisplay}</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">Players</span>
-            <span class="stat-value${hasPlayers ? ' players-active' : ''}"${playerTooltip}>${playerDisplay}</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">Ports</span>
-            <span class="stat-value dim">${esc(server.ports)}</span>
-          </div>
-        </div>
-
-        ${versionHtml}
-        ${scheduleHtml}
-        ${backupHtml}
-        ${idleHtml}
-
-        <div class="card-connect">
-          <div class="connect-row">
-            <span class="connect-label">Connect</span>
-            <span class="connect-value">${privacyMode ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : esc(server.connectAddress)}</span>
-            <button class="copy-btn" onclick="copyText('${esc(server.connectAddress)}', this)">Copy</button>
-          </div>
-          ${server.password ? `
-          <div class="connect-row">
-            <span class="connect-label">Password</span>
-            <span class="connect-value">${privacyMode ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : esc(server.password)}</span>
-            <button class="copy-btn" onclick="copyText('${esc(server.password)}', this)">Copy</button>
-          </div>
-          ` : ''}
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  grid.innerHTML = html;
+  for (const [id, card] of cards) {
+    if (!seen.has(id)) {
+      card.root.remove();
+      cards.delete(id);
+    }
+  }
 }
 
-function getStatusClass(status) {
-  if (status === 'running') return 'running';
-  if (status === 'stopped') return 'stopped';
-  return 'transitioning';
+function updateCard(card, server) {
+  const { refs } = card;
+
+  const pending = transitioning.get(server.id);
+  const settled = server.status === 'running' || server.status === 'stopped';
+  if (pending !== undefined && settled && server.status !== pending) {
+    transitioning.delete(server.id);
+  }
+  const isWorking = transitioning.has(server.id) || updating.has(server.id);
+
+  const state = isWorking ? 'working'
+    : server.status === 'running' ? 'running'
+    : server.status === 'stopped' ? 'stopped' : 'working';
+
+  // The relay flash fires only on a genuine state change — never on a poll that
+  // reports the same state as last time, and never on first paint.
+  const changed = card.status !== null && card.status !== state;
+  card.root.className = `server-card is-${state}`;
+
+  if (changed) {
+    void card.root.offsetWidth; // force reflow so the animation restarts
+    card.root.classList.add('state-changed');
+    clearTimeout(card.flashTimer);
+    card.flashTimer = setTimeout(() => card.root.classList.remove('state-changed'), 400);
+  }
+  card.status = state;
+
+  setText(refs.gameName, server.name);
+  setText(refs.displayName, server.displayName || '');
+  setText(refs.statusText, statusLabel(isWorking ? 'working' : server.status));
+
+  // --- controls ---
+  const running = server.status === 'running';
+  refs.primaryBtn.disabled = isWorking;
+  refs.restartBtn.disabled = isWorking || !running;
+  refs.restartBtn.style.display = running ? '' : 'none';
+
+  if (running) {
+    refs.primaryBtn.textContent = 'Stop';
+    refs.primaryBtn.className = 'btn btn-sm btn-halt';
+    refs.primaryBtn.dataset.action = 'stop';
+  } else {
+    refs.primaryBtn.textContent = 'Start';
+    refs.primaryBtn.className = 'btn btn-sm btn-go';
+    refs.primaryBtn.dataset.action = 'start';
+  }
+
+  // --- glance tier ---
+  const pd = playerCache[server.id];
+  const count = pd ? pd.playerCount : null;
+  const max = (pd && pd.maxPlayers) || server.maxPlayers || '—';
+  setText(refs.players, count !== null && count !== undefined ? `${count}/${max}` : `—/${max}`);
+  refs.players.className = 'stat-value' +
+    (count > 0 ? ' has-players' : count === null || count === undefined ? ' is-empty' : '');
+
+  const names = pd && pd.playerNames && pd.playerNames.length ? pd.playerNames.join(', ') : '';
+  if (names) refs.players.title = names;
+  else refs.players.removeAttribute('title');
+
+  const proc = server.process || {};
+  setText(refs.ram, proc.ramFormatted || '—');
+  refs.ram.className = 'stat-value' + (proc.ramFormatted ? '' : ' is-empty');
+  setText(refs.uptime, proc.uptimeFormatted || '—');
+  refs.uptime.className = 'stat-value' + (proc.uptimeFormatted ? '' : ' is-empty');
+
+  // --- connect ---
+  const addr = server.connectAddress || '';
+  setText(refs.addrValue, privacyMode && addr ? '•'.repeat(14) : (addr || '—'));
+  refs.addrValue.className = 'connect-value' + (privacyMode ? ' masked' : '');
+  refs.addrCopy.dataset.value = addr;
+  refs.addrCopy.style.display = addr ? '' : 'none';
+
+  if (server.password) {
+    refs.passRow.style.display = '';
+    setText(refs.passValue, privacyMode ? '•'.repeat(10) : server.password);
+    refs.passValue.className = 'connect-value' + (privacyMode ? ' masked' : '');
+    refs.passCopy.dataset.value = server.password;
+  } else {
+    refs.passRow.style.display = 'none';
+  }
+
+  // --- config summary ---
+  updateSummary(refs.summary, server);
 }
 
-function getStatusLabel(status) {
-  const labels = {
+/**
+ * The chip row. Two kinds of chip, and the distinction is the whole point:
+ *
+ *   ACTION chips (amber, clickable) — something needs doing. They deep-link
+ *   into the relevant section of the config panel.
+ *
+ *   STATE chips (neutral) — a standing arrangement worth knowing at a glance.
+ *
+ * Settings that are simply "on" and need nothing from the user do NOT appear.
+ * Auto-recovery in particular is deliberately absent: it's on by default, it's
+ * a setting rather than a state, and a chip for it would be one more thing to
+ * read on every card forever.
+ */
+function updateSummary(node, server) {
+  const fixed = node.querySelector('.chip-fixed');
+  const run = node.querySelector('.chip-run');
+  fixed.textContent = '';
+  run.textContent = '';
+
+  // --- Frozen column: things that need doing. Never scrolls. ---
+  if (!server.portForwarded) {
+    fixed.append(actionChip('Router Setup', 'ports',
+      'Port forwarding not set up — click to see how'));
+  }
+
+  if (server.version && server.version.updateAvailable) {
+    fixed.append(actionChip('Update Ready', 'version',
+      'A game update is available — click to install'));
+  }
+
+  // --- Scrolling column: standing arrangements worth a glance. ---
+  if (server.schedule && server.schedule.active) {
+    run.append(chip(`Restart ${cronToHuman(server.schedule.cronExpression)}`, 'on'));
+  }
+
+  if (server.backup && server.backup.enabled) {
+    run.append(chip('Backups On', 'on'));
+  }
+
+  if (server.idleShutdown) {
+    run.append(chip(`Idle ${formatIdleHours(server.idleShutdown)}`, 'on'));
+  }
+
+  if (!fixed.children.length && !run.children.length) {
+    run.append(chip('Nothing scheduled', ''));
+  }
+}
+
+function chip(text, tone) {
+  return el('span', 'chip' + (tone ? ` ${tone}` : ''), text);
+}
+
+// An amber chip that opens the config panel scrolled to the section that
+// resolves it, so the nag and the fix are one click apart.
+function actionChip(text, section, title) {
+  const btn = el('button', 'chip alert', text);
+  btn.type = 'button';
+  btn.dataset.action = 'configure';
+  btn.dataset.section = section;
+  btn.title = title;
+  return btn;
+}
+
+// Only writes when the value actually differs — avoids gratuitous DOM work and
+// stops screen readers re-announcing unchanged text every poll.
+function setText(node, text) {
+  const next = String(text);
+  if (node.textContent !== next) node.textContent = next;
+}
+
+function statusLabel(status) {
+  return ({
     running: 'Running',
     stopped: 'Stopped',
     starting: 'Starting',
     stopping: 'Stopping',
-    transitioning: 'Working...',
+    working: 'Working',
     paused: 'Paused',
     unknown: 'Unknown'
-  };
-  return labels[status] || status;
+  })[status] || status;
 }
 
-// --- Server actions ---
+// === Card actions (delegated) ================================================
 
-// Toggle auto-start; turning off also stops the server
-async function toggleServer(serverId, enabled) {
-  if (!enabled) {
-    setTransitioning(serverId);
+$('server-grid').addEventListener('click', async e => {
+  const btn = e.target.closest('button[data-action]');
+  if (!btn) return;
+
+  const card = btn.closest('.server-card');
+  if (!card) return;
+  const id = card.dataset.id;
+  const server = cachedServers.find(s => s.id === id);
+
+  switch (btn.dataset.action) {
+    case 'copy':
+      copyText(btn.dataset.value || '', btn);
+      break;
+    case 'configure':
+      openConfig(id, btn.dataset.section);
+      break;
+    case 'stop':
+      if (await confirmDialog(
+        `Stop ${server ? server.name : 'this server'}?`,
+        'Anyone currently playing will be disconnected.'
+      )) serverAction(id, 'stop');
+      break;
+    case 'start':
+      serverAction(id, 'start');
+      break;
+    case 'restart':
+      if (await confirmDialog(
+        `Restart ${server ? server.name : 'this server'}?`,
+        'Anyone currently playing will be disconnected.'
+      )) serverAction(id, 'restart');
+      break;
   }
+});
 
+async function serverAction(id, action) {
+  setWorking(id);
   try {
-    const res = await fetch(`/api/servers/${serverId}/toggle`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled })
-    });
+    const res = await fetch(`/api/servers/${id}/${action}`, { method: 'POST' });
     const data = await res.json();
-
     if (data.success) {
-      showToast(enabled ? 'Auto-start enabled' : 'Server disabled', 'success');
+      showToast(`${action[0].toUpperCase()}${action.slice(1)} sent`, 'success');
     } else {
-      showToast(`Toggle failed: ${data.message || 'Unknown error'}`, 'error');
-    }
-  } catch (err) {
-    showToast(`Failed to toggle: ${err.message}`, 'error');
-  } finally {
-    if (!enabled) {
-      setTimeout(() => { transitioning.delete(serverId); }, 5000);
-    }
-  }
-}
-
-// Restart a running server
-async function serverAction(serverId, action) {
-  setTransitioning(serverId);
-
-  try {
-    const res = await fetch(`/api/servers/${serverId}/${action}`, { method: 'POST' });
-    const data = await res.json();
-
-    if (data.success) {
-      showToast(`${action.charAt(0).toUpperCase() + action.slice(1)} successful`, 'success');
-    } else {
-      showToast(`${action} failed: ${data.message || 'Unknown error'}`, 'error');
+      showToast(`${action} failed: ${data.message || 'unknown error'}`, 'error');
+      transitioning.delete(id);
+      renderServers(cachedServers);
     }
   } catch (err) {
     showToast(`Failed to ${action}: ${err.message}`, 'error');
+    transitioning.delete(id);
+    renderServers(cachedServers);
   } finally {
-    setTimeout(() => { transitioning.delete(serverId); }, 5000);
+    // Clear the optimistic state after the service has had time to settle;
+    // the poll loop is authoritative from here.
+    setTimeout(() => {
+      transitioning.delete(id);
+      renderServers(cachedServers);
+    }, 6000);
   }
 }
 
-// Trigger a SteamCMD update for a server
-async function triggerUpdate(serverId, serverName) {
-  if (!confirm(`Update ${serverName}?\n\nThis will stop the server, download the update via SteamCMD, and restart. Players will be disconnected.`)) {
-    return;
+function setWorking(id) {
+  const server = cachedServers.find(s => s.id === id);
+  transitioning.set(id, server ? server.status : null);
+  renderServers(cachedServers);
+}
+
+// === Config panel ============================================================
+
+let configServerId = null;
+let lanAddress = null;
+
+async function openConfig(id, section) {
+  const server = cachedServers.find(s => s.id === id);
+  if (!server) return;
+  configServerId = id;
+
+  $('config-subject').textContent = server.name;
+  syncPowerSection(server);
+
+  // Port forwarding
+  $('cfg-ports-value').textContent = server.ports || 'None listed';
+  $('cfg-lan-value').textContent = lanAddress || 'this machine';
+  $('cfg-ports-done').checked = !!server.portForwarded;
+
+  // Version section
+  const ver = server.version;
+  const updateBtn = $('cfg-update-btn');
+  const verText = $('cfg-version-text');
+  if (ver && ver.updateAvailable) {
+    verText.textContent = `Installed build ${ver.installedBuild || '—'} · build ${ver.latestBuild} available.`;
+    updateBtn.style.display = '';
+  } else if (ver && ver.installedBuild) {
+    verText.textContent = `Installed build ${ver.installedBuild}. Up to date.`;
+    updateBtn.style.display = 'none';
+  } else if (server.steamAppId) {
+    verText.textContent = 'Checking for updates…';
+    updateBtn.style.display = 'none';
+  } else {
+    verText.textContent = 'Not a SteamCMD game — updates are managed manually.';
+    updateBtn.style.display = 'none';
   }
 
+  // Schedule
   try {
-    const res = await fetch(`/api/servers/${serverId}/update`, { method: 'POST' });
-    const data = await res.json();
-
-    if (data.success) {
-      showToast('Update started — watch for progress updates', 'success');
-    } else {
-      showToast(`Update failed: ${data.message || 'Unknown error'}`, 'error');
-    }
-  } catch (err) {
-    showToast(`Failed to start update: ${err.message}`, 'error');
-  }
-}
-
-// Show transitioning UI state on a card
-function setTransitioning(serverId) {
-  transitioning.add(serverId);
-
-  const cards = document.querySelectorAll('.server-card');
-  cards.forEach(card => {
-    if (card.dataset.id === serverId) {
-      card.className = 'server-card status-transitioning';
-      const badge = card.querySelector('.status-badge');
-      if (badge) {
-        badge.className = 'status-badge restarting';
-        badge.innerHTML = '<span class="status-dot"></span>Working...';
-      }
-      card.querySelectorAll('.action-btn').forEach(btn => btn.disabled = true);
-      const toggle = card.querySelector('.toggle-switch input');
-      if (toggle) toggle.disabled = true;
-    }
-  });
-}
-
-// --- Event Log ---
-
-let serverFilterPopulated = false;
-
-function populateServerFilter(servers) {
-  if (serverFilterPopulated) return;
-  const select = document.getElementById('event-filter-server');
-  if (!select) return;
-
-  servers.forEach(s => {
-    const opt = document.createElement('option');
-    opt.value = s.id;
-    opt.textContent = s.name;
-    select.appendChild(opt);
-  });
-  serverFilterPopulated = true;
-}
-
-async function loadEvents() {
-  const list = document.getElementById('event-log-list');
-  if (!list) return;
-
-  const filterServer = document.getElementById('event-filter-server');
-  const serverId = filterServer ? filterServer.value : '';
-
-  try {
-    const url = `/api/events?limit=${eventLimit}&offset=${eventOffset}${serverId ? `&serverId=${serverId}` : ''}`;
-    const res = await fetch(url);
-    const data = await res.json();
-
-    if (data.events.length === 0 && eventOffset === 0) {
-      list.innerHTML = '<div class="event-empty">No events yet</div>';
-    } else {
-      list.innerHTML = data.events.map(renderEventRow).join('');
-    }
-
-    renderPagination(data.total, data.offset, data.limit);
-  } catch (err) {
-    console.error('Failed to load events:', err);
-    list.innerHTML = '<div class="event-empty">Failed to load events</div>';
-  }
-}
-
-function renderEventRow(event) {
-  const time = formatEventTime(event.timestamp);
-  const typeInfo = getEventTypeInfo(event.event_type);
-  const serverName = event.server_id || 'System';
-
-  return `
-    <div class="event-row">
-      <span class="event-time">${time}</span>
-      <span class="event-type-badge ${typeInfo.badgeClass}">${typeInfo.label}</span>
-      <span class="event-server">${esc(serverName)}</span>
-      <span class="event-details">${esc(event.details || '')}</span>
-    </div>
-  `;
-}
-
-function prependEvent(event) {
-  const list = document.getElementById('event-log-list');
-  if (!list) return;
-
-  // Remove "no events" placeholder
-  const empty = list.querySelector('.event-empty');
-  if (empty) empty.remove();
-
-  // Only prepend if on the first page
-  if (eventOffset !== 0) return;
-
-  const row = document.createElement('div');
-  row.innerHTML = renderEventRow(event);
-  const firstChild = row.firstElementChild;
-  if (firstChild) {
-    firstChild.style.animation = 'slideIn 0.3s ease';
-    list.insertBefore(firstChild, list.firstChild);
-
-    // Remove excess rows
-    while (list.children.length > eventLimit) {
-      list.removeChild(list.lastChild);
-    }
-  }
-}
-
-function renderPagination(total, offset, limit) {
-  const container = document.getElementById('event-log-pagination');
-  if (!container) return;
-
-  if (total <= limit) {
-    container.innerHTML = '';
-    return;
-  }
-
-  const page = Math.floor(offset / limit) + 1;
-  const totalPages = Math.ceil(total / limit);
-
-  container.innerHTML = `
-    <button class="pagination-btn" onclick="changePage(-1)" ${page <= 1 ? 'disabled' : ''}>Prev</button>
-    <span class="pagination-info">Page ${page} of ${totalPages}</span>
-    <button class="pagination-btn" onclick="changePage(1)" ${page >= totalPages ? 'disabled' : ''}>Next</button>
-  `;
-}
-
-function changePage(direction) {
-  eventOffset += direction * eventLimit;
-  if (eventOffset < 0) eventOffset = 0;
-  loadEvents();
-}
-
-function toggleEventLog() {
-  const section = document.getElementById('event-log-section');
-  if (section) {
-    section.classList.toggle('collapsed');
-  }
-}
-
-function getEventTypeInfo(eventType) {
-  const map = {
-    'server.started':    { label: 'Started', badgeClass: 'started' },
-    'server.stopped':    { label: 'Stopped', badgeClass: 'stopped' },
-    'server.crashed':    { label: 'Crashed', badgeClass: 'crashed' },
-    'server.restarted':  { label: 'Restarted', badgeClass: 'restarted' },
-    'crash.recovered':   { label: 'Recovered', badgeClass: 'recovered' },
-    'crash.failed':      { label: 'Failed', badgeClass: 'failed' },
-    'restart.warning':   { label: 'Warning', badgeClass: 'warning' },
-    'restart.scheduled': { label: 'Scheduled', badgeClass: 'schedule' },
-    'schedule.updated':  { label: 'Schedule', badgeClass: 'schedule' },
-    'player.joined':     { label: 'Joined', badgeClass: 'started' },
-    'player.left':       { label: 'Left', badgeClass: 'default' },
-    'update.available':  { label: 'Update', badgeClass: 'warning' },
-    'update.started':    { label: 'Updating', badgeClass: 'warning' },
-    'update.completed':  { label: 'Updated', badgeClass: 'updated' },
-    'update.failed':     { label: 'Failed', badgeClass: 'failed' },
-    'backup.completed':  { label: 'Backup', badgeClass: 'started' },
-    'backup.failed':     { label: 'Backup Failed', badgeClass: 'failed' },
-    'backup.manual':     { label: 'Backup', badgeClass: 'default' },
-    'backup.config':     { label: 'Backup', badgeClass: 'schedule' },
-  };
-  return map[eventType] || { label: eventType || 'Event', badgeClass: 'default' };
-}
-
-function formatEventTime(timestamp) {
-  if (!timestamp) return '';
-  const d = new Date(timestamp + (timestamp.includes('Z') || timestamp.includes('+') ? '' : 'Z'));
-  const now = new Date();
-  const isToday = d.toDateString() === now.toDateString();
-
-  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  if (isToday) return time;
-
-  const date = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-  return `${date} ${time}`;
-}
-
-// --- Settings Modal ---
-
-async function openSettings() {
-  const overlay = document.getElementById('settings-overlay');
-  if (!overlay) return;
-
-  // Load current settings
-  try {
-    const res = await fetch('/api/settings');
-    const settings = await res.json();
-
-    document.getElementById('setting-webhook-url').value = settings.discordWebhookUrl || '';
-    document.getElementById('setting-notifications-enabled').checked = settings.discordNotificationsEnabled !== 'false';
-
-    // Category checkboxes: checked = notify, unchecked = muted
-    let muted = [];
-    try { muted = JSON.parse(settings.discordMutedCategories || '[]'); } catch {}
-    document.querySelectorAll('#notify-categories input[data-category]').forEach(cb => {
-      cb.checked = !muted.includes(cb.dataset.category);
-    });
-  } catch (err) {
-    console.error('Failed to load settings:', err);
-  }
-
-  overlay.classList.add('open');
-}
-
-function closeSettings() {
-  document.getElementById('settings-overlay').classList.remove('open');
-}
-
-function closeSettingsOverlay(event) {
-  if (event.target === event.currentTarget) closeSettings();
-}
-
-async function saveSettings() {
-  const webhookUrl = document.getElementById('setting-webhook-url').value.trim();
-  const enabled = document.getElementById('setting-notifications-enabled').checked;
-
-  try {
-    const res = await fetch('/api/settings', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        discordWebhookUrl: webhookUrl,
-        discordNotificationsEnabled: enabled,
-        discordMutedCategories: [...document.querySelectorAll('#notify-categories input[data-category]')]
-          .filter(cb => !cb.checked)
-          .map(cb => cb.dataset.category)
-      })
-    });
-    const data = await res.json();
-
-    if (data.success) {
-      showToast('Settings saved', 'success');
-      closeSettings();
-    } else {
-      showToast('Failed to save settings', 'error');
-    }
-  } catch (err) {
-    showToast(`Error: ${err.message}`, 'error');
-  }
-}
-
-async function testDiscord() {
-  try {
-    // Save first so the test uses the current URL
-    await saveSettings();
-
-    const res = await fetch('/api/settings/test-discord', { method: 'POST' });
-    const data = await res.json();
-
-    if (data.success) {
-      showToast('Test notification sent! Check Discord.', 'success');
-    } else {
-      showToast(`Test failed: ${data.message}`, 'error');
-    }
-  } catch (err) {
-    showToast(`Error: ${err.message}`, 'error');
-  }
-}
-
-// --- Schedule Modal ---
-
-let editingScheduleServerId = null;
-
-async function openSchedule(serverId, serverName) {
-  editingScheduleServerId = serverId;
-  const overlay = document.getElementById('schedule-overlay');
-  if (!overlay) return;
-
-  document.getElementById('schedule-server-name').textContent = serverName;
-
-  // Load current schedule
-  try {
-    const res = await fetch(`/api/servers/${serverId}/schedule`);
-    const schedule = await res.json();
-
-    const preset = document.getElementById('schedule-preset');
-    const cronInput = document.getElementById('schedule-cron-input');
-    const customGroup = document.getElementById('custom-cron-group');
-
+    const schedule = await (await fetch(`/api/servers/${id}/schedule`)).json();
+    const preset = $('cfg-schedule-preset');
     if (!schedule.enabled || !schedule.cron_expression) {
       preset.value = '';
-      customGroup.style.display = 'none';
+    } else if ([...preset.options].some(o => o.value === schedule.cron_expression)) {
+      preset.value = schedule.cron_expression;
     } else {
-      // Check if it matches a preset
-      const matchingOption = [...preset.options].find(o => o.value === schedule.cron_expression);
-      if (matchingOption) {
-        preset.value = schedule.cron_expression;
-        customGroup.style.display = 'none';
+      preset.value = 'custom';
+      $('cfg-schedule-cron').value = schedule.cron_expression;
+    }
+    syncCustom('cfg-schedule-preset', 'cfg-schedule-custom');
+  } catch { /* leave defaults */ }
+
+  // Backups
+  try {
+    const data = await (await fetch(`/api/servers/${id}/backup`)).json();
+    const cfg = data.config;
+    const preset = $('cfg-backup-preset');
+    $('cfg-backup-enabled').checked = !!(cfg && cfg.enabled);
+    $('cfg-backup-retention').value = String((cfg && cfg.retentionCount) || 5);
+
+    if (cfg && cfg.cronExpression) {
+      if ([...preset.options].some(o => o.value === cfg.cronExpression)) {
+        preset.value = cfg.cronExpression;
       } else {
         preset.value = 'custom';
-        cronInput.value = schedule.cron_expression;
-        customGroup.style.display = 'block';
-      }
-    }
-  } catch (err) {
-    console.error('Failed to load schedule:', err);
-  }
-
-  overlay.classList.add('open');
-}
-
-function closeSchedule() {
-  document.getElementById('schedule-overlay').classList.remove('open');
-  editingScheduleServerId = null;
-}
-
-function closeScheduleOverlay(event) {
-  if (event.target === event.currentTarget) closeSchedule();
-}
-
-function onSchedulePresetChange() {
-  const preset = document.getElementById('schedule-preset').value;
-  const customGroup = document.getElementById('custom-cron-group');
-  customGroup.style.display = preset === 'custom' ? 'block' : 'none';
-}
-
-async function saveSchedule() {
-  if (!editingScheduleServerId) return;
-
-  const preset = document.getElementById('schedule-preset').value;
-  let cronExpression = null;
-  let enabled = false;
-
-  if (preset === 'custom') {
-    cronExpression = document.getElementById('schedule-cron-input').value.trim();
-    enabled = !!cronExpression;
-  } else if (preset) {
-    cronExpression = preset;
-    enabled = true;
-  }
-
-  try {
-    const res = await fetch(`/api/servers/${editingScheduleServerId}/schedule`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cronExpression, enabled })
-    });
-    const data = await res.json();
-
-    if (data.success) {
-      // Optimistic UI: update cached data so the card re-renders immediately
-      const server = cachedServers.find(s => s.id === editingScheduleServerId);
-      if (server) {
-        server.schedule = enabled ? { cronExpression, active: true } : null;
-      }
-      showToast('Schedule updated', 'success');
-      closeSchedule();
-      if (cachedServers.length > 0) renderServerCards(cachedServers);
-    } else {
-      showToast('Failed to update schedule', 'error');
-    }
-  } catch (err) {
-    showToast(`Error: ${err.message}`, 'error');
-  }
-}
-
-// --- Cron to human-readable ---
-
-function cronToHuman(expr) {
-  if (!expr) return 'None';
-
-  const presets = {
-    '0 4 * * *': 'Daily 4:00 AM',
-    '0 6 * * *': 'Daily 6:00 AM',
-    '0 */12 * * *': 'Every 12h',
-    '0 */6 * * *': 'Every 6h',
-  };
-
-  if (presets[expr]) return presets[expr];
-
-  // Try to parse simple daily patterns
-  const parts = expr.split(' ');
-  if (parts.length >= 5) {
-    const min = parseInt(parts[0], 10);
-    const hour = parseInt(parts[1], 10);
-    if (!isNaN(min) && !isNaN(hour) && parts[2] === '*' && parts[3] === '*' && parts[4] === '*') {
-      const ampm = hour >= 12 ? 'PM' : 'AM';
-      const h = hour % 12 || 12;
-      const m = min.toString().padStart(2, '0');
-      return `Daily ${h}:${m} ${ampm}`;
-    }
-  }
-
-  return expr;
-}
-
-// --- Backup time formatting ---
-
-function formatBackupTime(isoString) {
-  if (!isoString) return 'None';
-  const d = new Date(isoString);
-  if (isNaN(d.getTime())) return 'None';
-  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const month = months[d.getMonth()];
-  const day = d.getDate();
-  const year = d.getFullYear();
-  let hour = d.getHours();
-  const min = d.getMinutes().toString().padStart(2, '0');
-  const ampm = hour >= 12 ? 'PM' : 'AM';
-  hour = hour % 12 || 12;
-  return `${month} ${day}, ${year} at ${hour}:${min} ${ampm}`;
-}
-
-// --- Reorder servers modal ---
-
-let draggedReorderItem = null;
-
-function openReorder() {
-  const overlay = document.getElementById('reorder-overlay');
-  const list = document.getElementById('reorder-list');
-  if (!overlay || !list || cachedServers.length === 0) return;
-
-  list.innerHTML = cachedServers.map(server => `
-    <div class="reorder-item" draggable="true" data-id="${server.id}">
-      <span class="reorder-handle">&#9776;</span>
-      <span class="reorder-name">${esc(server.name)}${server.displayName && server.displayName !== server.name ? ` <span class="reorder-subname">— ${esc(server.displayName)}</span>` : ''}</span>
-      <span class="reorder-arrows">
-        <button onclick="moveReorderItem(this, -1)" title="Move up">&#9650;</button>
-        <button onclick="moveReorderItem(this, 1)" title="Move down">&#9660;</button>
-      </span>
-    </div>
-  `).join('');
-
-  // Wire up drag-and-drop
-  list.querySelectorAll('.reorder-item').forEach(item => {
-    item.addEventListener('dragstart', () => {
-      draggedReorderItem = item;
-      item.classList.add('dragging');
-    });
-    item.addEventListener('dragend', () => {
-      item.classList.remove('dragging');
-      draggedReorderItem = null;
-    });
-    item.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      if (!draggedReorderItem || draggedReorderItem === item) return;
-      const rect = item.getBoundingClientRect();
-      const before = e.clientY < rect.top + rect.height / 2;
-      item.parentNode.insertBefore(draggedReorderItem, before ? item : item.nextSibling);
-    });
-  });
-
-  overlay.classList.add('open');
-}
-
-function moveReorderItem(btn, direction) {
-  const item = btn.closest('.reorder-item');
-  if (!item) return;
-  if (direction === -1 && item.previousElementSibling) {
-    item.parentNode.insertBefore(item, item.previousElementSibling);
-  } else if (direction === 1 && item.nextElementSibling) {
-    item.parentNode.insertBefore(item.nextElementSibling, item);
-  }
-}
-
-function closeReorder() {
-  document.getElementById('reorder-overlay').classList.remove('open');
-}
-
-function closeReorderOverlay(event) {
-  if (event.target === event.currentTarget) closeReorder();
-}
-
-async function saveReorder() {
-  const list = document.getElementById('reorder-list');
-  const order = [...list.querySelectorAll('.reorder-item')].map(el => el.dataset.id);
-
-  try {
-    const res = await fetch('/api/servers/order', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ order })
-    });
-    const data = await res.json();
-
-    if (data.success) {
-      // Optimistic UI update: sort the cached list to match and re-render
-      cachedServers.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
-      renderServerCards(cachedServers);
-      showToast('Server order saved', 'success');
-      closeReorder();
-    } else {
-      showToast('Failed to save order', 'error');
-    }
-  } catch (err) {
-    showToast(`Error: ${err.message}`, 'error');
-  }
-}
-
-// --- Idle shutdown modal ---
-
-function formatIdleHours(hours) {
-  if (hours >= 24 && hours % 24 === 0) {
-    const days = hours / 24;
-    return days === 1 ? '24 hours' : `${days} days`;
-  }
-  return `${hours} hours`;
-}
-
-let editingIdleServerId = null;
-
-function openIdle(serverId, serverName, currentHours) {
-  editingIdleServerId = serverId;
-  const overlay = document.getElementById('idle-overlay');
-  if (!overlay) return;
-
-  document.getElementById('idle-server-name').textContent = serverName;
-
-  // Select the current value (fall back to Never if it's not a listed option)
-  const select = document.getElementById('idle-hours');
-  const match = [...select.options].find(o => parseFloat(o.value) === currentHours);
-  select.value = match ? match.value : '0';
-
-  overlay.classList.add('open');
-}
-
-function closeIdle() {
-  document.getElementById('idle-overlay').classList.remove('open');
-  editingIdleServerId = null;
-}
-
-function closeIdleOverlay(event) {
-  if (event.target === event.currentTarget) closeIdle();
-}
-
-async function saveIdleConfig() {
-  if (!editingIdleServerId) return;
-
-  const hours = parseFloat(document.getElementById('idle-hours').value) || 0;
-
-  try {
-    const res = await fetch(`/api/servers/${editingIdleServerId}/idle`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hours })
-    });
-    const data = await res.json();
-
-    if (data.success) {
-      // Optimistic UI update
-      const server = cachedServers.find(s => s.id === editingIdleServerId);
-      if (server) server.idleShutdown = hours || null;
-      showToast('Idle shutdown saved', 'success');
-      closeIdle();
-      if (cachedServers.length > 0) renderServerCards(cachedServers);
-    } else {
-      showToast('Failed to save idle shutdown', 'error');
-    }
-  } catch (err) {
-    showToast(`Error: ${err.message}`, 'error');
-  }
-}
-
-// --- Backup modal ---
-
-let editingBackupServerId = null;
-
-async function openBackup(serverId, serverName) {
-  editingBackupServerId = serverId;
-  const overlay = document.getElementById('backup-overlay');
-  if (!overlay) return;
-
-  document.getElementById('backup-server-name').textContent = serverName;
-
-  // Load current backup config
-  try {
-    const res = await fetch(`/api/servers/${serverId}/backup`);
-    const data = await res.json();
-
-    const enabledCb = document.getElementById('backup-enabled');
-    const preset = document.getElementById('backup-preset');
-    const cronInput = document.getElementById('backup-cron-input');
-    const customGroup = document.getElementById('backup-custom-cron-group');
-    const retention = document.getElementById('backup-retention');
-
-    if (data.config && data.config.enabled) {
-      enabledCb.checked = true;
-      retention.value = String(data.config.retentionCount || 5);
-
-      // Match cron to preset
-      const matchingOption = [...preset.options].find(o => o.value === data.config.cronExpression);
-      if (matchingOption) {
-        preset.value = data.config.cronExpression;
-        customGroup.style.display = 'none';
-      } else if (data.config.cronExpression) {
-        preset.value = 'custom';
-        cronInput.value = data.config.cronExpression;
-        customGroup.style.display = 'block';
-      } else {
-        preset.value = '';
-        customGroup.style.display = 'none';
+        $('cfg-backup-cron').value = cfg.cronExpression;
       }
     } else {
-      enabledCb.checked = false;
       preset.value = '';
-      cronInput.value = '';
-      customGroup.style.display = 'none';
-      retention.value = '5';
     }
-
-    // Populate recent backups list
+    syncCustom('cfg-backup-preset', 'cfg-backup-custom');
     renderBackupList(data.recentBackups || []);
+  } catch { /* leave defaults */ }
+
+  // Idle
+  try {
+    const { hours } = await (await fetch(`/api/servers/${id}/idle`)).json();
+    const select = $('cfg-idle-hours');
+    select.value = [...select.options].some(o => parseFloat(o.value) === hours)
+      ? String(hours) : '0';
+  } catch { /* leave defaults */ }
+
+  openModal('config-overlay');
+  if (section) revealSection(section);
+}
+
+// Reflects live run state into the config panel's Power section. Called on open
+// and again on every poll while the panel is showing, so the buttons there
+// don't go stale behind the user's back.
+function syncPowerSection(server) {
+  const running = server.status === 'running';
+  const working = transitioning.has(server.id);
+
+  const state = $('cfg-state');
+  state.textContent = statusLabel(working ? 'working' : server.status);
+  state.className = 'status-text ' +
+    (working ? 'is-working' : running ? 'is-running' : 'is-stopped');
+
+  $('cfg-start').disabled = running || working;
+  $('cfg-stop').disabled = !running || working;
+  $('cfg-restart').disabled = !running || working;
+  $('cfg-autostart').checked = !!server.autoStart;
+}
+
+// Deep-link from an amber chip: scroll the section into view and tint it
+// briefly so the user's eye lands where the fix is.
+function revealSection(section) {
+  const map = { ports: 'cfg-ports-section', version: 'cfg-version-section' };
+  const node = $(map[section]);
+  if (!node) return;
+
+  // setTimeout, not requestAnimationFrame: rAF is throttled to zero in hidden
+  // or backgrounded tabs, so the reveal would silently never fire there.
+  setTimeout(() => {
+    node.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    node.classList.add('flagged');
+    node.focus({ preventScroll: true });
+    setTimeout(() => node.classList.remove('flagged'), 1800);
+  }, 0);
+}
+
+function syncCustom(presetId, groupId) {
+  $(groupId).style.display = $(presetId).value === 'custom' ? 'block' : 'none';
+}
+
+// --- Power section ---
+
+$('cfg-start').addEventListener('click', () => {
+  if (configServerId) serverAction(configServerId, 'start');
+});
+
+$('cfg-stop').addEventListener('click', async () => {
+  const server = cachedServers.find(s => s.id === configServerId);
+  if (!server) return;
+  if (await confirmDialog(`Stop ${server.name}?`,
+    'Anyone currently playing will be disconnected.')) {
+    serverAction(server.id, 'stop');
+  }
+});
+
+$('cfg-restart').addEventListener('click', async () => {
+  const server = cachedServers.find(s => s.id === configServerId);
+  if (!server) return;
+  if (await confirmDialog(`Restart ${server.name}?`,
+    'Anyone currently playing will be disconnected.')) {
+    serverAction(server.id, 'restart');
+  }
+});
+
+// Saves immediately rather than waiting for the Save button: it maps to a
+// Windows service property, not to the form's other settings. Note this hits
+// /autostart, NOT /toggle — /toggle also stops the server, which would be a
+// nasty surprise from a settings switch.
+$('cfg-autostart').addEventListener('change', async e => {
+  const id = configServerId;
+  if (!id) return;
+  const enabled = e.target.checked;
+  try {
+    const data = await put(`/api/servers/${id}/autostart`, { enabled });
+    if (data.success) {
+      const server = cachedServers.find(s => s.id === id);
+      if (server) server.autoStart = enabled;
+      showToast(enabled ? 'Auto-recovery on' : 'Auto-recovery off', 'success');
+    } else {
+      e.target.checked = !enabled;
+      showToast('Could not change auto-recovery', 'error');
+    }
   } catch (err) {
-    console.error('Failed to load backup config:', err);
+    e.target.checked = !enabled;
+    showToast(`Error: ${err.message}`, 'error');
   }
+});
 
-  overlay.classList.add('open');
-}
-
-function closeBackup() {
-  document.getElementById('backup-overlay').classList.remove('open');
-  editingBackupServerId = null;
-}
-
-function closeBackupOverlay(event) {
-  if (event.target === event.currentTarget) closeBackup();
-}
-
-function onBackupPresetChange() {
-  const preset = document.getElementById('backup-preset').value;
-  document.getElementById('backup-custom-cron-group').style.display = preset === 'custom' ? 'block' : 'none';
-}
-
-async function saveBackupConfig() {
-  if (!editingBackupServerId) return;
-
-  const enabled = document.getElementById('backup-enabled').checked;
-  const preset = document.getElementById('backup-preset').value;
-  const retentionCount = parseInt(document.getElementById('backup-retention').value, 10) || 5;
-
-  let cronExpression = null;
-  if (preset === 'custom') {
-    cronExpression = document.getElementById('backup-cron-input').value.trim();
-  } else if (preset) {
-    cronExpression = preset;
+// Also immediate — it clears a nag chip, so the feedback should be instant.
+$('cfg-ports-done').addEventListener('change', async e => {
+  const id = configServerId;
+  if (!id) return;
+  const done = e.target.checked;
+  try {
+    const data = await put(`/api/servers/${id}/port-forward`, { done });
+    if (data.success) {
+      const server = cachedServers.find(s => s.id === id);
+      if (server) server.portForwarded = done;
+      renderServers(cachedServers);
+      showToast(done ? 'Port forwarding marked done' : 'Port forwarding flagged again', 'success');
+    } else {
+      e.target.checked = !done;
+      showToast('Could not save', 'error');
+    }
+  } catch (err) {
+    e.target.checked = !done;
+    showToast(`Error: ${err.message}`, 'error');
   }
+});
+
+$('cfg-schedule-preset').addEventListener('change', () =>
+  syncCustom('cfg-schedule-preset', 'cfg-schedule-custom'));
+$('cfg-backup-preset').addEventListener('change', () =>
+  syncCustom('cfg-backup-preset', 'cfg-backup-custom'));
+
+function cronFrom(presetId, customId) {
+  const preset = $(presetId).value;
+  if (preset === 'custom') return $(customId).value.trim() || null;
+  return preset || null;
+}
+
+$('cfg-save').addEventListener('click', async () => {
+  const id = configServerId;
+  if (!id) return;
+
+  const scheduleCron = cronFrom('cfg-schedule-preset', 'cfg-schedule-cron');
+  const backupCron = cronFrom('cfg-backup-preset', 'cfg-backup-cron');
+  const backupEnabled = $('cfg-backup-enabled').checked;
+  const retention = parseInt($('cfg-backup-retention').value, 10) || 5;
+  const idleHours = parseFloat($('cfg-idle-hours').value) || 0;
 
   try {
-    const res = await fetch(`/api/servers/${editingBackupServerId}/backup`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled, cronExpression, retentionCount })
-    });
-    const data = await res.json();
+    const results = await Promise.all([
+      put(`/api/servers/${id}/schedule`, { cronExpression: scheduleCron, enabled: !!scheduleCron }),
+      put(`/api/servers/${id}/backup`, {
+        enabled: backupEnabled, cronExpression: backupCron, retentionCount: retention
+      }),
+      put(`/api/servers/${id}/idle`, { hours: idleHours })
+    ]);
 
-    if (data.success) {
-      // Optimistic UI update
-      const server = cachedServers.find(s => s.id === editingBackupServerId);
+    if (results.every(r => r && r.success)) {
+      // Optimistic: update the cache so the card reflects the change now rather
+      // than waiting up to a full poll interval.
+      const server = cachedServers.find(s => s.id === id);
       if (server) {
-        if (!server.backup) server.backup = {};
-        server.backup.enabled = enabled;
-        server.backup.cronExpression = cronExpression;
+        server.schedule = scheduleCron ? { cronExpression: scheduleCron, active: true } : null;
+        server.backup = { ...(server.backup || {}), enabled: backupEnabled, cronExpression: backupCron };
+        server.idleShutdown = idleHours || null;
       }
-      showToast('Backup settings saved', 'success');
-      closeBackup();
-      if (cachedServers.length > 0) renderServerCards(cachedServers);
+      renderServers(cachedServers);
+      showToast('Configuration saved', 'success');
+      closeModal();
     } else {
-      showToast('Failed to save backup settings', 'error');
+      showToast('Some settings failed to save', 'error');
     }
   } catch (err) {
     showToast(`Error: ${err.message}`, 'error');
   }
+});
+
+async function put(url, body) {
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return res.json();
 }
 
-async function triggerBackupNow() {
-  if (!editingBackupServerId) return;
-
-  showToast('Starting backup...', 'info');
+$('cfg-backup-now').addEventListener('click', async () => {
+  const id = configServerId;
+  if (!id) return;
+  showToast('Backup started…', 'info');
   try {
-    const res = await fetch(`/api/servers/${editingBackupServerId}/backup/now`, { method: 'POST' });
+    const res = await fetch(`/api/servers/${id}/backup/now`, { method: 'POST' });
     const data = await res.json();
-
     if (data.success) {
-      showToast('Backup completed!', 'success');
-
-      // Update cache
-      const server = cachedServers.find(s => s.id === editingBackupServerId);
-      if (server) {
-        if (!server.backup) server.backup = {};
-        server.backup.lastBackupTime = new Date().toISOString();
-      }
-
-      // Refresh the backup list in the modal
-      const listRes = await fetch(`/api/servers/${editingBackupServerId}/backup`);
-      const listData = await listRes.json();
+      showToast('Backup complete', 'success');
+      const listData = await (await fetch(`/api/servers/${id}/backup`)).json();
       renderBackupList(listData.recentBackups || []);
-
-      if (cachedServers.length > 0) renderServerCards(cachedServers);
     } else {
       showToast(data.message || 'Backup failed', 'error');
     }
   } catch (err) {
     showToast(`Error: ${err.message}`, 'error');
   }
-}
+});
+
+$('cfg-update-btn').addEventListener('click', async () => {
+  const id = configServerId;
+  const server = cachedServers.find(s => s.id === id);
+  if (!id) return;
+
+  const ok = await confirmDialog(
+    `Update ${server ? server.name : 'this server'}?`,
+    'The server will stop, download the update via SteamCMD, and restart. Players will be disconnected.'
+  );
+  if (!ok) return;
+
+  try {
+    const res = await fetch(`/api/servers/${id}/update`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      showToast('Update started — watch for progress', 'success');
+      closeModal();
+    } else {
+      showToast(`Update failed: ${data.message || 'unknown error'}`, 'error');
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  }
+});
 
 function renderBackupList(backups) {
-  const listGroup = document.getElementById('backup-list-group');
-  const list = document.getElementById('backup-list');
+  const list = $('cfg-backup-list');
+  list.textContent = '';
 
-  if (!backups || backups.length === 0) {
-    listGroup.style.display = 'none';
+  if (!backups.length) {
+    const empty = el('div', 'backup-item');
+    empty.append(el('span', null, 'None yet'));
+    list.append(empty);
     return;
   }
 
-  listGroup.style.display = 'block';
-  list.innerHTML = backups.map(b => {
-    const sizeMB = b.size_bytes ? (b.size_bytes / (1024 * 1024)).toFixed(1) + ' MB' : '';
-    const time = formatBackupTime(b.timestamp);
-    return `<div class="backup-item">
-      <span class="backup-item-time">${time}</span>
-      <span class="backup-item-size">${sizeMB}</span>
-    </div>`;
-  }).join('');
-}
-
-// --- Privacy toggle ---
-
-function togglePrivacy() {
-  privacyMode = !privacyMode;
-  document.getElementById('privacy-icon-visible').style.display = privacyMode ? 'none' : '';
-  document.getElementById('privacy-icon-hidden').style.display = privacyMode ? '' : 'none';
-  document.getElementById('privacy-toggle-btn').classList.toggle('active', privacyMode);
-  // Re-render cards to show/hide sensitive info
-  if (cachedServers.length > 0) {
-    renderServerCards(cachedServers);
+  for (const b of backups) {
+    const row = el('div', 'backup-item');
+    row.append(el('span', null, formatBackupTime(b.timestamp)));
+    row.append(el('span', null, b.size_bytes
+      ? `${(b.size_bytes / 1048576).toFixed(1)} MB` : ''));
+    list.append(row);
   }
 }
 
-// --- Copy to clipboard ---
+// === Setup ===================================================================
+
+$('setup-open').addEventListener('click', () => openModal('setup-overlay'));
+
+// Copy buttons on the agent prompts. Delegated so the markup stays declarative:
+// a button just names the element whose text it copies.
+$('setup-overlay').addEventListener('click', e => {
+  const btn = e.target.closest('[data-copy-target]');
+  if (!btn) return;
+  const source = $(btn.dataset.copyTarget);
+  if (source) copyText(source.textContent, btn);
+});
+
+// === Settings ================================================================
+
+$('settings-open').addEventListener('click', async () => {
+  try {
+    const settings = await (await fetch('/api/settings')).json();
+    $('setting-webhook-url').value = settings.discordWebhookUrl || '';
+    $('setting-notifications-enabled').checked = settings.discordNotificationsEnabled !== 'false';
+
+    let muted = [];
+    try { muted = JSON.parse(settings.discordMutedCategories || '[]'); } catch {}
+    document.querySelectorAll('#notify-categories input[data-category]').forEach(cb => {
+      cb.checked = !muted.includes(cb.dataset.category);
+    });
+  } catch (err) {
+    showToast('Could not load settings', 'error');
+  }
+  openModal('settings-overlay');
+});
+
+async function saveSettings() {
+  const data = await put('/api/settings', {
+    discordWebhookUrl: $('setting-webhook-url').value.trim(),
+    discordNotificationsEnabled: $('setting-notifications-enabled').checked,
+    discordMutedCategories: [...document.querySelectorAll('#notify-categories input[data-category]')]
+      .filter(cb => !cb.checked).map(cb => cb.dataset.category)
+  });
+  return data && data.success;
+}
+
+$('settings-save').addEventListener('click', async () => {
+  try {
+    if (await saveSettings()) {
+      showToast('Settings saved', 'success');
+      closeModal();
+    } else {
+      showToast('Failed to save settings', 'error');
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  }
+});
+
+$('settings-test').addEventListener('click', async () => {
+  try {
+    await saveSettings(); // test against what's on screen, not what was stored
+    const data = await (await fetch('/api/settings/test-discord', { method: 'POST' })).json();
+    showToast(data.success ? 'Test notification sent' : `Test failed: ${data.message}`,
+      data.success ? 'success' : 'error');
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  }
+});
+
+// === Reorder =================================================================
+
+let draggedItem = null;
+
+$('reorder-open').addEventListener('click', () => {
+  const list = $('reorder-list');
+  if (!cachedServers.length) return;
+  list.textContent = '';
+
+  for (const server of cachedServers) {
+    const item = el('div', 'reorder-item');
+    item.draggable = true;
+    item.dataset.id = server.id;
+
+    item.append(el('span', 'reorder-handle', '≡'));
+
+    const name = el('span', 'reorder-name', server.name);
+    if (server.displayName && server.displayName !== server.name) {
+      name.append(el('span', 'reorder-sub', ` — ${server.displayName}`));
+    }
+    item.append(name);
+
+    const arrows = el('span', 'reorder-arrows');
+    const up = el('button', null, '▲');
+    up.type = 'button';
+    up.dataset.dir = '-1';
+    up.setAttribute('aria-label', `Move ${server.name} up`);
+    const down = el('button', null, '▼');
+    down.type = 'button';
+    down.dataset.dir = '1';
+    down.setAttribute('aria-label', `Move ${server.name} down`);
+    arrows.append(up, down);
+    item.append(arrows);
+
+    item.addEventListener('dragstart', () => {
+      draggedItem = item;
+      item.classList.add('dragging');
+    });
+    item.addEventListener('dragend', () => {
+      item.classList.remove('dragging');
+      draggedItem = null;
+    });
+    item.addEventListener('dragover', e => {
+      e.preventDefault();
+      if (!draggedItem || draggedItem === item) return;
+      const rect = item.getBoundingClientRect();
+      const before = e.clientY < rect.top + rect.height / 2;
+      item.parentNode.insertBefore(draggedItem, before ? item : item.nextSibling);
+    });
+
+    list.append(item);
+  }
+
+  openModal('reorder-overlay');
+});
+
+$('reorder-list').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-dir]');
+  if (!btn) return;
+  const item = btn.closest('.reorder-item');
+  const dir = parseInt(btn.dataset.dir, 10);
+  if (dir === -1 && item.previousElementSibling) {
+    item.parentNode.insertBefore(item, item.previousElementSibling);
+  } else if (dir === 1 && item.nextElementSibling) {
+    item.parentNode.insertBefore(item.nextElementSibling, item);
+  }
+  btn.focus();
+});
+
+$('reorder-save').addEventListener('click', async () => {
+  const order = [...$('reorder-list').querySelectorAll('.reorder-item')].map(el => el.dataset.id);
+  try {
+    const data = await put('/api/servers/order', { order });
+    if (data.success) {
+      cachedServers.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+      renderServers(cachedServers);
+      showToast('Order saved', 'success');
+      closeModal();
+    } else {
+      showToast('Failed to save order', 'error');
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  }
+});
+
+// === Event log ===============================================================
+
+let filterPopulated = false;
+
+function populateServerFilter(servers) {
+  if (filterPopulated || !servers.length) return;
+  const select = $('event-filter-server');
+  for (const s of servers) {
+    const opt = document.createElement('option');
+    opt.value = s.id;
+    opt.textContent = s.name;
+    select.append(opt);
+  }
+  filterPopulated = true;
+}
+
+$('event-filter-server').addEventListener('change', () => { eventOffset = 0; loadEvents(); });
+$('event-refresh').addEventListener('click', loadEvents);
+
+$('event-log-toggle-btn').addEventListener('click', () => {
+  const section = $('event-log-section');
+  const collapsed = section.classList.toggle('collapsed');
+  $('event-log-toggle-btn').setAttribute('aria-expanded', String(!collapsed));
+});
+
+async function loadEvents() {
+  const list = $('event-log-list');
+  const serverId = $('event-filter-server').value;
+
+  try {
+    const url = `/api/events?limit=${eventLimit}&offset=${eventOffset}` +
+      (serverId ? `&serverId=${encodeURIComponent(serverId)}` : '');
+    const data = await (await fetch(url)).json();
+
+    list.textContent = '';
+    if (!data.events.length) {
+      list.append(el('div', 'event-empty', 'No events yet'));
+    } else {
+      for (const event of data.events) list.append(eventRow(event));
+    }
+    renderPagination(data.total, data.offset, data.limit);
+  } catch (err) {
+    list.textContent = '';
+    list.append(el('div', 'event-empty', 'Failed to load events'));
+  }
+}
+
+function eventRow(event) {
+  const row = el('div', 'event-row');
+  const info = eventTypeInfo(event.event_type);
+  row.append(el('span', 'event-time', formatEventTime(event.timestamp)));
+  row.append(el('span', `event-type ${info.tone}`, info.label));
+  row.append(el('span', 'event-server', event.server_id || 'System'));
+  row.append(el('span', 'event-details', event.details || ''));
+  return row;
+}
+
+function prependEvent(event) {
+  const list = $('event-log-list');
+  const empty = list.querySelector('.event-empty');
+  if (empty) empty.remove();
+  if (eventOffset !== 0) return;
+
+  const filter = $('event-filter-server').value;
+  if (filter && event.server_id !== filter) return;
+
+  list.insertBefore(eventRow(event), list.firstChild);
+  while (list.children.length > eventLimit) list.lastChild.remove();
+}
+
+function renderPagination(total, offset, limit) {
+  const container = $('event-log-pagination');
+  container.textContent = '';
+  if (total <= limit) return;
+
+  const page = Math.floor(offset / limit) + 1;
+  const totalPages = Math.ceil(total / limit);
+
+  const prev = el('button', 'btn btn-sm', 'Prev');
+  prev.type = 'button';
+  prev.disabled = page <= 1;
+  prev.addEventListener('click', () => { eventOffset = Math.max(0, eventOffset - limit); loadEvents(); });
+
+  const next = el('button', 'btn btn-sm', 'Next');
+  next.type = 'button';
+  next.disabled = page >= totalPages;
+  next.addEventListener('click', () => { eventOffset += limit; loadEvents(); });
+
+  container.append(prev, el('span', 'pagination-info', `${page} / ${totalPages}`), next);
+}
+
+// Only run-state events carry a semantic hue; the rest stay neutral so the
+// three-colour rule holds.
+function eventTypeInfo(type) {
+  const map = {
+    'server.started':    ['Started', 'good'],
+    'server.stopped':    ['Stopped', ''],
+    'server.crashed':    ['Crashed', 'bad'],
+    'server.restarted':  ['Restarted', ''],
+    'crash.recovered':   ['Recovered', 'good'],
+    'crash.failed':      ['Failed', 'bad'],
+    'restart.warning':   ['Warning', 'warn'],
+    'restart.scheduled': ['Scheduled', ''],
+    'schedule.updated':  ['Schedule', ''],
+    'player.joined':     ['Joined', 'good'],
+    'player.left':       ['Left', ''],
+    'update.available':  ['Update', 'warn'],
+    'update.started':    ['Updating', 'warn'],
+    'update.completed':  ['Updated', 'good'],
+    'update.failed':     ['Failed', 'bad'],
+    'backup.completed':  ['Backup', ''],
+    'backup.failed':     ['Backup', 'bad'],
+    'backup.manual':     ['Backup', ''],
+    'backup.config':     ['Backup', ''],
+    'idle.shutdown':     ['Idle', ''],
+    'idle.config':       ['Idle', ''],
+    'config.reordered':  ['Config', '']
+  };
+  const [label, tone] = map[type] || [type || 'Event', ''];
+  return { label, tone };
+}
+
+// === Modals ==================================================================
+
+let openOverlay = null;
+let lastFocused = null;
+
+const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
+function openModal(overlayId) {
+  closeModal();
+  const overlay = $(overlayId);
+  if (!overlay) return;
+
+  lastFocused = document.activeElement;
+  overlay.classList.add('open');
+  openOverlay = overlay;
+
+  const first = overlay.querySelector(FOCUSABLE);
+  if (first) first.focus();
+}
+
+function closeModal() {
+  if (!openOverlay) return;
+  openOverlay.classList.remove('open');
+  openOverlay = null;
+  if (lastFocused && lastFocused.focus) lastFocused.focus();
+  lastFocused = null;
+}
+
+document.addEventListener('keydown', e => {
+  if (!openOverlay) return;
+
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    closeModal();
+    return;
+  }
+
+  // Focus trap: Tab must not escape an aria-modal dialog.
+  if (e.key === 'Tab') {
+    const items = [...openOverlay.querySelectorAll(FOCUSABLE)]
+      .filter(node => node.offsetParent !== null && !node.disabled);
+    if (!items.length) return;
+
+    const first = items[0];
+    const last = items[items.length - 1];
+
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+});
+
+document.addEventListener('click', e => {
+  if (e.target.closest('[data-close]')) {
+    closeModal();
+    return;
+  }
+  // Click on the backdrop itself, not on the dialog inside it.
+  if (openOverlay && e.target === openOverlay) closeModal();
+});
+
+// Promise-based replacement for window.confirm(), which rendered an OS dialog
+// that ignored the design and blocked the main thread.
+let confirmResolve = null;
+
+function confirmDialog(title, message) {
+  return new Promise(resolve => {
+    confirmResolve = resolve;
+    $('confirm-title').textContent = title;
+    $('confirm-message').textContent = message;
+    openModal('confirm-overlay');
+
+    const overlay = $('confirm-overlay');
+    const settle = value => {
+      if (confirmResolve) { confirmResolve(value); confirmResolve = null; }
+    };
+
+    const observer = new MutationObserver(() => {
+      if (!overlay.classList.contains('open')) {
+        observer.disconnect();
+        settle(false);
+      }
+    });
+    observer.observe(overlay, { attributes: true, attributeFilter: ['class'] });
+
+    $('confirm-ok').onclick = () => {
+      observer.disconnect();
+      settle(true);
+      closeModal();
+    };
+  });
+}
+
+// === Privacy =================================================================
+
+$('privacy-toggle').addEventListener('click', () => {
+  privacyMode = !privacyMode;
+  const btn = $('privacy-toggle');
+  btn.setAttribute('aria-pressed', String(privacyMode));
+  btn.setAttribute('aria-label', privacyMode
+    ? 'Show connect addresses and passwords'
+    : 'Hide connect addresses and passwords');
+  $('privacy-icon-visible').style.display = privacyMode ? 'none' : '';
+  $('privacy-icon-hidden').style.display = privacyMode ? '' : 'none';
+  renderServers(cachedServers);
+});
+
+// === Utilities ===============================================================
 
 async function copyText(text, btn) {
+  if (!text) return;
   try {
     await navigator.clipboard.writeText(text);
-    btn.textContent = 'Copied!';
-    btn.classList.add('copied');
-    setTimeout(() => {
-      btn.textContent = 'Copy';
-      btn.classList.remove('copied');
-    }, 2000);
-  } catch (err) {
-    // Fallback for non-HTTPS contexts
-    const textarea = document.createElement('textarea');
-    textarea.value = text;
-    textarea.style.position = 'fixed';
-    textarea.style.opacity = '0';
-    document.body.appendChild(textarea);
-    textarea.select();
+  } catch {
+    // navigator.clipboard is unavailable over plain HTTP, which is exactly how
+    // this dashboard is served on a LAN.
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.append(ta);
+    ta.select();
     document.execCommand('copy');
-    document.body.removeChild(textarea);
-    btn.textContent = 'Copied!';
-    btn.classList.add('copied');
-    setTimeout(() => {
-      btn.textContent = 'Copy';
-      btn.classList.remove('copied');
-    }, 2000);
+    ta.remove();
   }
+  const original = btn.textContent;
+  btn.textContent = 'Copied';
+  setTimeout(() => { btn.textContent = original; }, 1600);
 }
-
-// --- Toast notifications ---
 
 function showToast(message, type = 'info') {
-  const container = document.getElementById('toast-container');
-  if (!container) return;
-
-  const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  toast.textContent = message;
-  container.appendChild(toast);
-
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transform = 'translateX(100%)';
-    toast.style.transition = 'all 0.3s ease';
-    setTimeout(() => toast.remove(), 300);
-  }, 4000);
+  const container = $('toast-container');
+  const toast = el('div', `toast ${type}`, message);
+  container.append(toast);
+  setTimeout(() => toast.remove(), 4200);
 }
 
-// --- Utility ---
+function cronToHuman(expr) {
+  if (!expr) return 'None';
+  const presets = {
+    '0 4 * * *': 'daily 4:00',
+    '0 6 * * *': 'daily 6:00',
+    '0 */12 * * *': 'every 12h',
+    '0 */6 * * *': 'every 6h'
+  };
+  if (presets[expr]) return presets[expr];
 
-function esc(str) {
-  if (!str) return '';
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
+  const parts = expr.split(' ');
+  if (parts.length >= 5) {
+    const min = parseInt(parts[0], 10);
+    const hour = parseInt(parts[1], 10);
+    if (!isNaN(min) && !isNaN(hour) && parts[2] === '*' && parts[3] === '*' && parts[4] === '*') {
+      return `daily ${hour}:${String(min).padStart(2, '0')}`;
+    }
+  }
+  return expr;
+}
+
+function formatIdleHours(hours) {
+  if (hours >= 24 && hours % 24 === 0) {
+    const days = hours / 24;
+    return days === 1 ? '24h' : `${days}d`;
+  }
+  return `${hours}h`;
+}
+
+function formatEventTime(timestamp) {
+  if (!timestamp) return '';
+  // SQLite writes "YYYY-MM-DD HH:MM:SS" in UTC with no zone marker; without the
+  // appended Z the browser would read it as local time.
+  const hasZone = timestamp.includes('Z') || timestamp.includes('+');
+  const d = new Date(timestamp + (hasZone ? '' : 'Z'));
+  if (isNaN(d.getTime())) return '';
+
+  const today = d.toDateString() === new Date().toDateString();
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  return today ? time : `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`;
+}
+
+function formatBackupTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleString([], {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false
+  });
 }

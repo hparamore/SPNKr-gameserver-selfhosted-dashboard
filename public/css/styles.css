@@ -1,1328 +1,1232 @@
-/* Game Server Dashboard — Dark gaming theme */
+/* SPNKr — issued equipment for running game servers.
+   Obeys ART-DIRECTION.md. Read it before changing anything here.
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+   Three rules that are load-bearing, not stylistic:
+   1. No box-shadow, anywhere. Depth comes from 1px rules and surface value.
+   2. No looping animation. This dashboard lives on a second monitor; anything
+      that moves while nothing has changed is a defect.
+   3. Barlow = a human wrote it. Plex Mono = a machine emitted it. Never mix. */
+
+/* === Fonts (self-hosted: no CDN request, works on a LAN with no internet) ===
+   Barlow Condensed and IBM Plex Mono, both SIL Open Font License 1.1. */
+
+@font-face {
+  font-family: 'Barlow Condensed';
+  src: url('/fonts/barlow-condensed-400.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
 }
+@font-face {
+  font-family: 'Barlow Condensed';
+  src: url('/fonts/barlow-condensed-500.woff2') format('woff2');
+  font-weight: 500; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Barlow Condensed';
+  src: url('/fonts/barlow-condensed-600.woff2') format('woff2');
+  font-weight: 600; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Barlow Condensed';
+  src: url('/fonts/barlow-condensed-700.woff2') format('woff2');
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('/fonts/ibm-plex-mono-400.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('/fonts/ibm-plex-mono-500.woff2') format('woff2');
+  font-weight: 500; font-style: normal; font-display: swap;
+}
+
+/* === Tokens === */
 
 :root {
-  --bg-primary: #0f0f1a;
-  --bg-card: #1a1a2e;
-  --bg-card-hover: #1f1f35;
-  --bg-surface: #252540;
-  --text-primary: #e0e0e0;
-  --text-secondary: #8888aa;
-  --text-muted: #555577;
-  --accent: #6c63ff;
-  --accent-dim: #4a42cc;
-  --green: #00e676;
-  --green-dim: rgba(0, 230, 118, 0.15);
-  --red: #ff4757;
-  --red-dim: rgba(255, 71, 87, 0.15);
-  --yellow: #ffc107;
-  --yellow-dim: rgba(255, 193, 7, 0.15);
-  --blue: #0099ff;
-  --blue-dim: rgba(0, 153, 255, 0.15);
-  --purple: #9b59b6;
-  --purple-dim: rgba(155, 89, 182, 0.15);
-  --border: #2a2a45;
-  --radius: 16px;
-  --radius-sm: 8px;
+  /* Shell — warm near-blacks. Never blue-black: that reads consumer-tech. */
+  --shell-900: #0C0D0B;
+  --shell-800: #151613;
+  --shell-750: #191B16;
+  --shell-700: #1D1F1A;
+  --shell-600: #262820;
+
+  --rule: #32352C;
+  --rule-bright: #4A4E42;
+
+  --ink: #E8E6DE;
+  --ink-dim: #9A9B8E;
+  /* Tertiary ink labels every field on the card (PLAYERS, CONNECT, MEMORY), so
+     it carries meaning and must clear WCAG AA 4.5:1 on the *darkest* surface it
+     sits on, not just the card plate. #7A7B6F measured 4.04:1 on --shell-750
+     and failed; this clears 5.02:1 there and 5.25:1 on the plate. */
+  --ink-mute: #8A8B7D;
+
+  /* Three semantic hues. No more. */
+  --amber: #FFB020;
+  --amber-field: rgba(255, 176, 32, 0.12);
+  --ok: #6FD24A;
+  --ok-field: rgba(111, 210, 74, 0.12);
+  --fault: #FF5540;
+  --fault-field: rgba(255, 85, 64, 0.12);
+
+  --display: 'Barlow Condensed', 'Arial Narrow', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --radius: 2px;
+  --pad: 18px;
 }
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  font-family: var(--display);
+  font-size: 15px;
+  background: var(--shell-900);
+  color: var(--ink);
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* === Top Bar === */
+/* Hatch on the ground plane only — felt, not seen. Plates stay flat. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.025) 0 1px,
+    transparent 1px 5px
+  );
+}
+
+body > * { position: relative; z-index: 1; }
+
+/* Micro-label: stencil spacing. Used for every field name in the product.
+   Barlow Condensed runs narrow, so it reads a size smaller than a normal sans
+   at the same px — the small-text tier is set larger here than it would be in
+   a non-condensed face. */
+.lbl {
+  font-family: var(--display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+
+/* Every machine-emitted value. */
+.val {
+  font-family: var(--mono);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+/* === Top bar === */
 
 .topbar {
   display: flex;
+  align-items: stretch;
   justify-content: space-between;
-  align-items: center;
-  padding: 12px 24px;
-  background: var(--bg-card);
-  border-bottom: 1px solid var(--border);
+  gap: 24px;
+  background: var(--shell-800);
+  border-bottom: 1px solid var(--rule);
   position: sticky;
   top: 0;
   z-index: 100;
-  gap: 16px;
 }
 
-.topbar-left {
+.brand {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 12px;
+  padding: 14px 20px;
   flex-shrink: 0;
 }
 
+.brand-mark { display: block; flex-shrink: 0; }
+
+.brand-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+/* Says what the thing is, for anyone who opens it and doesn't already know. */
+.tagline {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  white-space: nowrap;
+}
+
+/* No text-transform: the canonical stylization is "SPNKr" with a lowercase r,
+   and uppercasing here would silently destroy it. Casing comes from the markup. */
 .logo {
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: 2px;
-  color: var(--accent);
+  font-family: var(--display);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1;
+  color: var(--ink);
 }
 
-.subtitle {
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.topbar-right {
+.sys-rack {
   display: flex;
-  gap: 20px;
-  align-items: center;
-  flex-wrap: wrap;
+  align-items: stretch;
+  margin-left: auto;
 }
 
 .sys-stat {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  padding: 10px 18px;
+  min-width: 132px;
 }
 
-.sys-label {
-  color: var(--text-secondary);
-  font-weight: 600;
-  min-width: 30px;
+.sys-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+
+.sys-value {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;   /* "16.8 / 64 GB" must never break across two lines */
 }
 
 .sys-bar {
-  width: 80px;
-  height: 6px;
-  background: var(--bg-surface);
-  border-radius: 3px;
+  height: 4px;
+  background: var(--shell-700);
+  border: 1px solid var(--rule);
   overflow: hidden;
 }
 
 .sys-bar-fill {
+  display: block;
   height: 100%;
-  background: var(--accent);
-  border-radius: 3px;
-  transition: width 0.5s ease, background-color 0.3s ease;
   width: 0%;
+  background: var(--ink-dim);
 }
 
-.sys-bar-fill.warn {
-  background: var(--yellow);
+.sys-bar-fill.warn { background: var(--amber); }
+.sys-bar-fill.danger { background: var(--fault); }
+
+.tools {
+  display: flex;
+  align-items: stretch;
 }
 
-.sys-bar-fill.danger {
-  background: var(--red);
-}
-
-.sys-value {
-  color: var(--text-primary);
-  font-weight: 600;
-  min-width: 36px;
-  text-align: right;
-}
-
-.settings-btn {
+/* No dividing rules between topbar cells. With a border on every boundary the
+   bar read as a stack of separate widgets and drew more attention than the
+   cards below it, which are the actual content. Spacing separates them now. */
+.tool-btn {
   background: none;
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  padding: 6px 8px;
-  border-radius: var(--radius-sm);
+  border: none;
+  color: var(--ink-dim);
+  padding: 0 14px;
   cursor: pointer;
-  transition: all 0.15s ease;
   display: flex;
   align-items: center;
-  flex-shrink: 0;
+  border-radius: var(--radius);
 }
 
-.settings-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+/* Setup is the one topbar control a first-time user must be able to find, so
+   it's labelled rather than left as a glyph to decode. */
+.tool-btn-text {
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
+.tool-btn:hover { color: var(--amber); background: var(--shell-750); }
+.tool-btn[aria-pressed='true'] { color: var(--amber); background: var(--amber-field); }
 
-.settings-btn.active {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: rgba(108, 99, 255, 0.12);
-}
+/* === Grid === */
 
-/* === Server Grid === */
-
+/* No align-items here: grid items stretch by default, so every plate in a row
+   matches the tallest. Servers without a password would otherwise sit short and
+   the row would read as ragged. */
 .server-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-  gap: 20px;
-  padding: 24px;
-  max-width: 1400px;
+  grid-template-columns: repeat(auto-fill, minmax(370px, 1fr));
+  gap: 14px;
+  padding: 20px;
+  max-width: 1500px;
   margin: 0 auto;
 }
 
-.loading {
-  grid-column: 1 / -1;
-  text-align: center;
-  padding: 60px 20px;
-  color: var(--text-muted);
-  font-size: 16px;
-}
+/* === Server plate === */
 
-/* === Server Card === */
-
+/* Column flex so the config bar can be pinned to the bottom of a stretched
+   plate — see .card-config { margin-top: auto }. */
+/* 2px, not 1px: at 1px the state hue was too faint to register from across a
+   room, which is the whole point of keying the border. */
 .server-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px;
-  transition: border-color 0.2s ease, transform 0.15s ease;
-}
-
-.server-card:hover {
-  border-color: var(--accent-dim);
-  transform: translateY(-1px);
-}
-
-.server-card.status-running {
-  border-left: 3px solid var(--green);
-}
-
-.server-card.status-stopped {
-  border-left: 3px solid var(--red);
-}
-
-.server-card.status-transitioning {
-  border-left: 3px solid var(--yellow);
-}
-
-/* Card header */
-.card-header {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-bottom: 16px;
+  background: var(--shell-800);
+  border: 2px solid var(--rule);
+  border-radius: var(--radius);
+  transition: border-color 100ms linear;
 }
 
-.card-header-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.server-card:hover { border-color: var(--rule-bright); }
+
+/* State must be readable without reading a word.
+   This was a 3px coloured border-left — the single most recognisable tell of
+   generated UI, and a hard ban. The signal survives without it: the whole
+   plate border takes the state hue, a stopped plate recedes to a darker
+   surface with dimmed ink, and the tube readout carries it a third time.
+   Keying the full border is also stronger at a glance than one edge. */
+.server-card.is-running { border-color: color-mix(in srgb, var(--ok) 45%, var(--rule)); }
+.server-card.is-working { border-color: color-mix(in srgb, var(--amber) 55%, var(--rule)); }
+.server-card.is-stopped {
+  border-color: color-mix(in srgb, var(--fault) 32%, var(--rule));
+  background: var(--shell-750);
 }
 
-.card-header-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
+.server-card.is-running:hover { border-color: var(--ok); }
+.server-card.is-stopped:hover { border-color: var(--fault); }
+
+/* --- Working: a highlight travelling around the border ---------------------
+   Transient states only (starting, stopping, restarting, updating — including
+   scheduled restarts, which pass through 'stopping'/'starting'). This does not
+   violate "nothing moves unless something changed": something IS changing, and
+   the motion stops the instant the server settles.
+
+   Two painted backgrounds: the plate colour clipped to padding-box, and a
+   conic gradient clipped to border-box so it shows only through the 2px
+   border. Rotating the gradient's start angle sweeps the highlight around.
+
+   @property is what makes an angle animatable. Chrome 85+, Safari 16.4+,
+   Firefox 128+. Without it the gradient renders static amber, which still
+   reads correctly as "working" — it just doesn't travel. */
+@property --shine-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
 }
 
-.card-header-sub {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.server-card.is-working,
+.server-card.is-working:hover {
+  border-color: transparent;
+  background:
+    linear-gradient(var(--shell-800), var(--shell-800)) padding-box,
+    conic-gradient(
+      from var(--shine-angle),
+      color-mix(in srgb, var(--amber) 30%, var(--rule)) 0deg,
+      var(--amber) 32deg,
+      color-mix(in srgb, var(--amber) 55%, var(--rule)) 78deg,
+      color-mix(in srgb, var(--amber) 30%, var(--rule)) 150deg,
+      color-mix(in srgb, var(--amber) 30%, var(--rule)) 360deg
+    ) border-box;
 }
+
+@media (prefers-reduced-motion: no-preference) {
+  .server-card.is-working {
+    animation: shine-sweep 2.6s linear infinite; /* design-check: allow no-loop-motion — transient only; runs while a server is starting/stopping/updating and stops the moment it settles */
+  }
+}
+
+@keyframes shine-sweep {
+  to { --shine-angle: 360deg; }
+}
+
+.server-card.is-stopped .game-name { color: var(--ink-dim); }
+
+.card-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px var(--pad);
+  border-bottom: 1px solid var(--rule);
+}
+
+.name-block { min-width: 0; }
 
 .game-name {
-  font-size: 18px;
+  display: block;
+  font-family: var(--display);
+  font-size: 30px;
   font-weight: 700;
-  color: var(--text-primary);
-}
-
-.display-name {
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-
-.status-badge {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 600;
+  line-height: 0.95;
+  letter-spacing: 0.01em;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  flex-shrink: 0;
-}
-
-.status-badge.running {
-  background: var(--green-dim);
-  color: var(--green);
-}
-
-.status-badge.stopped {
-  background: var(--red-dim);
-  color: var(--red);
-}
-
-.status-badge.starting,
-.status-badge.stopping,
-.status-badge.restarting {
-  background: var(--yellow-dim);
-  color: var(--yellow);
-}
-
-.status-badge.unknown {
-  background: rgba(136, 136, 170, 0.15);
-  color: var(--text-secondary);
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.status-badge.running .status-dot {
-  animation: pulse 2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
-}
-
-/* Card stats */
-.card-stats {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.stat-item {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.stat-label {
-  font-size: 11px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.stat-value {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.stat-value.dim {
-  color: var(--text-secondary);
-}
-
-.stat-value.players-active {
-  color: var(--green);
-  cursor: default;
-}
-
-/* Version + update row */
-.card-version {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--bg-surface);
-  border-radius: var(--radius-sm);
-  padding: 8px 12px;
-  margin-bottom: 8px;
-  font-size: 12px;
-}
-
-.version-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-  min-width: 0;
-}
-
-.version-build {
-  color: var(--text-secondary);
-  font-family: 'Consolas', 'Monaco', monospace;
-  font-size: 12px;
-}
-
-.version-uptodate {
-  color: var(--green);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: default;
-}
-
-.update-badge {
-  background: var(--yellow-dim);
-  color: var(--yellow);
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 11px;
-  font-weight: 600;
-  white-space: nowrap;
-  animation: badgePulse 2s ease-in-out infinite;
-}
-
-@keyframes badgePulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
-}
-
-.btn-update {
-  background: rgba(155, 89, 182, 0.15);
-  color: #9b59b6;
-  flex: none;
-  padding: 4px 14px;
-  font-size: 11px;
-}
-
-.btn-update:hover:not(:disabled) {
-  background: rgba(155, 89, 182, 0.25);
-}
-
-.update-link {
-  color: var(--accent);
-  font-size: 11px;
-  text-decoration: none;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-
-.update-link:hover {
-  text-decoration: underline;
-}
-
-/* Schedule + restart row */
-.card-schedule {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--bg-surface);
-  border-radius: var(--radius-sm);
-  padding: 8px 12px;
-  margin-bottom: 8px;
-  font-size: 12px;
-}
-
-.schedule-info {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-secondary);
-  flex: 1;
-  min-width: 0;
-}
-
-.schedule-info.active {
-  color: var(--text-secondary);
-}
-
-.schedule-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.schedule-edit-btn {
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.schedule-edit-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.card-schedule .btn-restart {
-  flex: none;
-  padding: 4px 14px;
-  font-size: 11px;
-}
-
-/* Backup row */
-.card-backup {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--bg-surface);
-  border-radius: var(--radius-sm);
-  padding: 8px 12px;
-  margin-bottom: 8px;
-  font-size: 12px;
-}
-
-.backup-info {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-secondary);
-  flex: 1;
-  min-width: 0;
-}
-
-.backup-info.active {
-  color: var(--text-secondary);
-}
-
-.backup-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.backup-edit-btn {
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.backup-edit-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-/* Connection info */
-.card-connect {
-  background: var(--bg-surface);
-  border-radius: var(--radius-sm);
-  padding: 12px;
-  margin-bottom: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.connect-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-}
-
-.connect-label {
-  font-size: 11px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  flex-shrink: 0;
-}
-
-.connect-value {
-  font-family: 'Consolas', 'Monaco', monospace;
-  font-size: 13px;
-  color: var(--text-primary);
-  flex: 1;
-}
-
-.copy-btn {
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  padding: 3px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  flex-shrink: 0;
-}
-
-.copy-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.copy-btn.copied {
-  border-color: var(--green);
-  color: var(--green);
-}
-
-/* Toggle switch */
-.toggle-switch {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-}
-
-.toggle-switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-  position: absolute;
-}
-
-.toggle-slider {
-  position: relative;
-  display: inline-block;
-  width: 44px;
-  height: 24px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 24px;
-  transition: all 0.25s ease;
-  flex-shrink: 0;
-}
-
-.toggle-slider::before {
-  content: '';
-  position: absolute;
-  width: 18px;
-  height: 18px;
-  left: 2px;
-  top: 2px;
-  background: var(--text-muted);
-  border-radius: 50%;
-  transition: all 0.25s ease;
-}
-
-input:checked + .toggle-slider {
-  background: var(--green-dim);
-  border-color: rgba(0, 230, 118, 0.3);
-}
-
-input:checked + .toggle-slider::before {
-  transform: translateX(20px);
-  background: var(--green);
-}
-
-input:disabled + .toggle-slider {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-/* Inline status text (replaces badge in card header) */
-.status-text {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.status-text.running { color: var(--green); }
-.status-text.stopped { color: var(--red); }
-.status-text.starting,
-.status-text.stopping,
-.status-text.restarting { color: var(--yellow); }
-.status-text.unknown { color: var(--text-secondary); }
-
-.status-text .status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.status-text.running .status-dot {
-  animation: pulse 2s ease-in-out infinite;
-}
-
-/* Outlined action buttons (GPortal style) */
-.btn-outlined {
-  padding: 5px 16px;
-  font-size: 12px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  border-radius: 6px;
-  background: transparent;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-}
-
-.btn-outlined:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.btn-outlined-accent {
-  border: 1.5px solid var(--accent);
-  color: var(--accent);
-}
-
-.btn-outlined-accent:hover:not(:disabled) {
-  background: rgba(108, 99, 255, 0.12);
-}
-
-.btn-outlined-green {
-  border: 1.5px solid var(--green);
-  color: var(--green);
-}
-
-.btn-outlined-green:hover:not(:disabled) {
-  background: rgba(0, 230, 118, 0.12);
-}
-
-/* Filled action buttons (Start/Restart) */
-.btn-filled {
-  padding: 5px 16px;
-  min-width: 80px;
-  text-align: center;
-  font-size: 12px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  border-radius: 6px;
-  border: 1.5px solid transparent;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-}
-
-.btn-filled:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.btn-filled-accent {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
-}
-
-.btn-filled-accent:hover:not(:disabled) {
-  background: #5a52e0;
-  border-color: #5a52e0;
-}
-
-.btn-filled-green {
-  background: var(--green);
-  color: #111;
-  border-color: var(--green);
-}
-
-.btn-filled-green:hover:not(:disabled) {
-  background: #00c853;
-  border-color: #00c853;
-}
-
-/* Subtle stop button in schedule row */
-.btn-stop-subtle {
-  color: var(--red);
-  border-color: var(--border);
-}
-
-.btn-stop-subtle:hover {
-  border-color: var(--red);
-  color: var(--red);
-}
-
-/* Action buttons */
-.action-btn {
-  padding: 10px 16px;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-
-.action-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.btn-start {
-  background: var(--green-dim);
-  color: var(--green);
-}
-
-.btn-start:hover:not(:disabled) {
-  background: rgba(0, 230, 118, 0.25);
-}
-
-.btn-stop {
-  background: var(--red-dim);
-  color: var(--red);
-}
-
-.btn-stop:hover:not(:disabled) {
-  background: rgba(255, 71, 87, 0.25);
-}
-
-.btn-restart {
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-}
-
-.btn-restart:hover:not(:disabled) {
-  background: rgba(108, 99, 255, 0.15);
-  color: var(--accent);
-}
-
-/* === Event Log === */
-
-.event-log-section {
-  max-width: 1400px;
-  margin: 0 auto 24px;
-  padding: 0 24px;
-}
-
-.event-log-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius) var(--radius) 0 0;
-  padding: 12px 20px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.event-log-header:hover {
-  background: var(--bg-card-hover);
-}
-
-.event-log-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.event-log-toggle {
-  color: var(--text-muted);
-  font-size: 14px;
-  transition: transform 0.2s ease;
-}
-
-.event-log-section.collapsed .event-log-toggle {
-  transform: rotate(-90deg);
-}
-
-.event-log-body {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-top: none;
-  border-radius: 0 0 var(--radius) var(--radius);
-  overflow: hidden;
-}
-
-.event-log-section.collapsed .event-log-body {
-  display: none;
-}
-
-.event-log-section.collapsed .event-log-header {
-  border-radius: var(--radius);
-}
-
-.event-log-filters {
-  display: flex;
-  gap: 8px;
-  padding: 12px 20px;
-  border-bottom: 1px solid var(--border);
-}
-
-.event-log-filters select {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  color: var(--text-primary);
-  padding: 6px 10px;
-  border-radius: var(--radius-sm);
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.event-refresh-btn {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  padding: 6px 12px;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.event-refresh-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.event-log-list {
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.event-empty {
-  padding: 40px 20px;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 14px;
-}
-
-.event-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 20px;
-  border-bottom: 1px solid rgba(42, 42, 69, 0.5);
-  font-size: 13px;
-}
-
-.event-row:hover {
-  background: var(--bg-card-hover);
-}
-
-.event-time {
-  color: var(--text-muted);
-  font-size: 12px;
-  white-space: nowrap;
-  min-width: 130px;
-}
-
-.event-type-badge {
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 11px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.event-type-badge.started { background: var(--green-dim); color: var(--green); }
-.event-type-badge.stopped { background: var(--red-dim); color: var(--red); }
-.event-type-badge.crashed { background: var(--red-dim); color: var(--red); }
-.event-type-badge.restarted { background: var(--blue-dim); color: var(--blue); }
-.event-type-badge.warning { background: var(--yellow-dim); color: var(--yellow); }
-.event-type-badge.recovered { background: var(--green-dim); color: var(--green); }
-.event-type-badge.failed { background: var(--red-dim); color: var(--red); }
-.event-type-badge.schedule { background: var(--blue-dim); color: var(--blue); }
-.event-type-badge.updated { background: var(--purple-dim); color: var(--purple); }
-.event-type-badge.default { background: rgba(136, 136, 170, 0.15); color: var(--text-secondary); }
-
-.event-server {
-  color: var(--text-secondary);
-  font-weight: 600;
-  min-width: 80px;
-}
-
-.event-details {
-  color: var(--text-primary);
-  flex: 1;
+  color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.name-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  min-width: 0;
+}
+
+.display-name {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--ink-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-text {
+  font-family: var(--display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.status-text::before { content: '\00b7\00a0\00a0'; color: var(--ink-mute); }
+.is-running .status-text, .status-text.is-running { color: var(--ok); }
+.is-stopped .status-text, .status-text.is-stopped { color: var(--fault); }
+.is-working .status-text, .status-text.is-working { color: var(--amber); }
+
+/* In the config panel the state stands alone in a section header, with no
+   display-name preceding it, so the separator dot would be dangling. */
+.cfg-head .status-text::before { content: none; }
+
+/* --- The tubes: the instrument readout. --- */
+/* Deliberately NOT a copy of the logo. Stamping the mark on all six cards read
+   as branding rather than instrumentation, and diluted the header mark by
+   repeating it. Instead the readout abstracts the mark's one signature trait —
+   the diagonal offset of the two bores — into a staggered pair of bars, which
+   stays legible from across the room in a way small bores do not.
+   22px + 8px offset = the same 30px the header allows for. */
+
+.tubes {
+  display: flex;
+  align-items: flex-start;
+  gap: 3px;
+  flex-shrink: 0;
+  height: 30px;
+}
+
+.tube {
+  width: 5px;
+  height: 22px;
+  border: 1px solid var(--rule-bright);
+  background: transparent;
+  border-radius: 1px;
+}
+
+.tube:last-child { margin-top: 8px; }
+
+.is-running .tube { background: var(--ok); border-color: var(--ok); }
+.is-working .tube:first-child { background: var(--amber); border-color: var(--amber); }
+
+/* Stopped reads as empty tubes, not grey ones: red outline, hollow centre.
+   Unfilled is the signal — the bore is empty, the thing is out. */
+.is-stopped .tube { border-color: var(--fault); background: transparent; }
+
+/* Signature interaction — the relay flash. Fires only on an actual state
+   change, snaps in two hard steps like a relay throwing, then holds. */
+@media (prefers-reduced-motion: no-preference) {
+  .server-card.state-changed .tube {
+    animation: relay 240ms steps(2, end) 1;
+  }
+}
+
+@keyframes relay {
+  0%   { opacity: 0.15; }
+  100% { opacity: 1; }
+}
+
+.card-controls { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+/* --- Glance tier --- */
+
+.card-stats {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  border-bottom: 1px solid var(--rule);
+}
+
+.stat {
+  padding: 10px var(--pad);
+  border-right: 1px solid var(--rule);
+  min-width: 0;
+}
+.stat:last-child { border-right: none; }
+
+.stat-value {
+  display: block;
+  margin-top: 5px;
+  font-family: var(--mono);
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stat-value.is-empty { color: var(--ink-mute); }
+.stat-value.has-players { color: var(--ok); }
+
+/* --- Connect block. The thing you came here to copy. --- */
+
+.card-connect { padding: 12px var(--pad); }
+
+.connect-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.connect-row + .connect-row { margin-top: 10px; }
+
+.connect-body { flex: 1; min-width: 0; }
+
+.connect-value {
+  display: block;
+  margin-top: 3px;
+  font-family: var(--mono);
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.connect-value.masked { color: var(--ink-mute); letter-spacing: 0.1em; }
+
+/* --- Config tier: collapsed to one line + one control --- */
+
+/* margin-top:auto pins this to the bottom of the plate. On a card shorter than
+   its row (no password, say) the slack collects above this bar instead of
+   stretching it, so every footer in a row lines up. */
+.card-config {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  padding: 9px var(--pad);
+  border-top: 1px solid var(--rule);
+  background: var(--shell-750);
+}
+
+/* One line, never two — wrapping chips made cards uneven and pushed the
+   Configure button around. Action chips hold a fixed column on the left; the
+   state chips scroll past in the remaining space only if they don't fit. */
+.config-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  font-size: 13px;
+  color: var(--ink-mute);
+  min-width: 0;
+  flex: 1;
+}
+
+/* Amber "needs doing" chips. Frozen: never scrolls, never shrinks. */
+.chip-fixed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* With no action chips this element is 0-wide but still takes a flex slot, and
+   the parent's 8px gap then pushed the first chip 8px right of everything else
+   on the card. Collapse it so chips align with the tubes, labels and values. */
+.chip-fixed:empty { display: none; }
+
+.chip-track {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  /* Fade the cut edge so a clipped chip reads as "more", not as broken. */
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 18px), transparent 100%);
+}
+
+.chip-run {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+}
+
+/* State chips simply clip under the Configure button. They're standing
+   arrangements, not urgent, and everything they say is in the config panel —
+   so overflow that's quietly cut is cheaper than anything that moves.
+   (An earlier build scrolled them on a ticker. On a dashboard that lives on a
+   second monitor, motion at rest is a defect; it was removed.) */
+
+.chip {
+  font-family: var(--display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border: 1px solid var(--rule-bright);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+.chip.on { color: var(--ink); border-color: var(--ink-mute); }
+
+/* Action chips are <button>s: something needs doing, and clicking jumps to the
+   section of the config panel that resolves it. */
+button.chip {
+  cursor: pointer;
+  transition: background-color 100ms linear;
+}
+
+.chip.alert { color: var(--amber); border-color: var(--amber); background: var(--amber-field); }
+button.chip.alert:hover { background: color-mix(in srgb, var(--amber) 26%, transparent); }
+button.chip.alert:active { transform: translateY(1px); }
+
+/* The one ambient animation in the product, and the only one that earns it:
+   an action chip is a NOTIFICATION — unfinished work waiting on the user — not
+   ambient state. It exists only while something needs doing and disappears the
+   moment it's resolved, so this never becomes permanent background motion.
+   Deliberately shallow (fill only, no size or position change) so it registers
+   in peripheral vision without demanding the eye. */
+@media (prefers-reduced-motion: no-preference) {
+  button.chip.alert {
+    animation: chip-attention 2.6s ease-in-out infinite; /* design-check: allow no-loop-motion — action chips are notifications of pending work, not ambient state; they vanish once resolved */
+  }
+  button.chip.alert:hover { animation: none; }
+}
+
+@keyframes chip-attention {
+  0%, 100% { background: var(--amber-field); border-color: color-mix(in srgb, var(--amber) 62%, transparent); }
+  50%      { background: color-mix(in srgb, var(--amber) 24%, transparent); border-color: var(--amber); }
+}
+
+/* === Buttons === */
+
+.btn {
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 7px 14px;
+  border: 1px solid var(--rule-bright);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink-dim);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 100ms linear, color 100ms linear, background-color 100ms linear;
+}
+
+.btn:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-mute); background: var(--shell-600); }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* Pressed state. The stylesheet previously had no :active rule anywhere, so
+   every control in the product felt dead on mousedown — the click registered
+   but nothing acknowledged it until the request came back. */
+.btn:active:not(:disabled),
+.tool-btn:active,
+.modal-close:active,
+.reorder-arrows button:active {
+  background: var(--shell-700);
+  transform: translateY(1px);
+}
+
+/* Run controls sit neutral at rest and only take their semantic colour on
+   intent (hover/focus). Six red STOP buttons glowing across the grid is noise
+   on a screen that lives in peripheral vision — and --ok/--fault are reserved
+   for actual run state. The plate edge and tubes already carry that signal. */
+.btn-go:hover:not(:disabled),
+.btn-go:focus-visible:not(:disabled) {
+  background: var(--ok-field); color: var(--ok); border-color: var(--ok);
+}
+
+.btn-halt:hover:not(:disabled),
+.btn-halt:focus-visible:not(:disabled) {
+  background: var(--fault-field); color: var(--fault); border-color: var(--fault);
+}
+
+.btn-primary { color: var(--amber); border-color: var(--amber); }
+.btn-primary:hover:not(:disabled) { background: var(--amber-field); color: var(--amber); border-color: var(--amber); }
+
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+
+/* === Empty + connection states === */
+
+.grid-message {
+  grid-column: 1 / -1;
+  border: 1px dashed var(--rule-bright);
+  border-radius: var(--radius);
+  padding: 48px 24px;
+  text-align: center;
+}
+
+.grid-message h2 {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  margin-bottom: 8px;
+}
+
+.grid-message p { font-size: 15px; color: var(--ink-mute); max-width: 46ch; margin: 0 auto; }
+.grid-message code { font-family: var(--mono); font-size: 14px; color: var(--amber); }
+
+/* Link-loss banner. The old build only logged a disconnect to the console and
+   left stale numbers on screen indefinitely. */
+.link-banner {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 20px;
+  background: var(--fault-field);
+  border-bottom: 1px solid var(--fault);
+  color: var(--fault);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+body.link-down .link-banner { display: flex; }
+body.link-down .server-grid { opacity: 0.45; }
+
+/* === Event log === */
+
+.event-log-section { max-width: 1500px; margin: 0 auto 28px; padding: 0 20px; }
+
+.event-log-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: var(--shell-800);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius) var(--radius) 0 0;
+  padding: 10px 16px;
+  cursor: pointer;
+  font-family: var(--display);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  text-align: left;
+}
+
+.event-log-header:hover { color: var(--ink); }
+
+.event-log-toggle { margin-left: auto; font-size: 12px; color: var(--ink-mute); }
+.event-log-section.collapsed .event-log-header { border-radius: var(--radius); }
+.event-log-section.collapsed .event-log-body { display: none; }
+
+.event-log-body {
+  background: var(--shell-800);
+  border: 1px solid var(--rule);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+
+.event-log-filters {
+  display: flex;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.event-log-list { max-height: 380px; overflow-y: auto; }
+
+.event-row {
+  display: grid;
+  grid-template-columns: 92px 112px 124px 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 7px 16px;
+  border-bottom: 1px solid var(--shell-700);
+  font-size: 14px;
+}
+
+.event-row:last-child { border-bottom: none; }
+.event-row:hover { background: var(--shell-750); }
+
+.event-time {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-mute);
+  font-variant-numeric: tabular-nums;
+}
+
+.event-type {
+  font-family: var(--display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: var(--radius);
+  border: 1px solid var(--rule-bright);
+  color: var(--ink-dim);
+  text-align: center;
+}
+
+/* Only run-state events get a semantic hue; everything else stays neutral. */
+.event-type.good { color: var(--ok); border-color: var(--ok); }
+.event-type.bad { color: var(--fault); border-color: var(--fault); }
+.event-type.warn { color: var(--amber); border-color: var(--amber); }
+
+.event-server {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-details {
+  color: var(--ink);
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-empty { padding: 36px 16px; text-align: center; color: var(--ink-mute); font-size: 15px; }
+
 .event-log-pagination {
   display: flex;
   justify-content: center;
-  gap: 8px;
-  padding: 12px 20px;
-  border-top: 1px solid var(--border);
-}
-
-.pagination-btn {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  padding: 6px 14px;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.pagination-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.pagination-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-top: 1px solid var(--rule);
 }
 
 .pagination-info {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-mute);
+}
+
+/* === Form controls === */
+
+.field { margin-bottom: 14px; }
+.field:last-child { margin-bottom: 0; }
+
+.input, select.input {
+  width: 100%;
+  background: var(--shell-700);
+  border: 1px solid var(--rule-bright);
+  border-radius: var(--radius);
+  color: var(--ink);
+  padding: 9px 12px;
+  font-family: var(--mono);
+  font-size: 14px;
+  margin-top: 5px;
+}
+
+/* The native select chevron sits hard against the right edge while the label
+   has 12px of air on the left, which reads as broken alignment. Suppress it,
+   draw our own, and pad symmetrically. The arrow is --ink-dim (#9A9B8E); a
+   data URI can't inherit currentColor, so update both if that token moves. */
+select.input {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 36px;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='7' viewBox='0 0 11 7' fill='none' stroke='%239A9B8E' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5 5.5 6 10 1.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+
+select.input:hover { border-color: var(--ink-mute); }
+
+.input:focus { outline: none; border-color: var(--amber); }
+
+.hint { display: block; margin-top: 6px; font-size: 14px; color: var(--ink-mute); }
+
+.check {
   display: flex;
   align-items: center;
-  color: var(--text-muted);
-  font-size: 12px;
+  gap: 9px;
+  font-size: 15px;
+  color: var(--ink-dim);
+  cursor: pointer;
+  padding: 4px 0;
 }
+
+.check input { accent-color: var(--amber); width: 15px; height: 15px; flex-shrink: 0; }
+.check:hover { color: var(--ink); }
+
+/* Toggle */
+.toggle { position: relative; display: inline-flex; align-items: center; cursor: pointer; flex-shrink: 0; }
+.toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+
+.toggle-track {
+  width: 40px;
+  height: 20px;
+  background: var(--shell-700);
+  border: 1px solid var(--rule-bright);
+  border-radius: var(--radius);
+  position: relative;
+  transition: background-color 100ms linear, border-color 100ms linear;
+}
+
+.toggle-track::before {
+  content: '';
+  position: absolute;
+  left: 2px; top: 2px;
+  width: 14px; height: 14px;
+  background: var(--ink-mute);
+  border-radius: 1px;
+  transition: transform 120ms linear, background-color 100ms linear;
+}
+
+.toggle input:checked + .toggle-track { border-color: var(--ok); background: var(--ok-field); }
+.toggle input:checked + .toggle-track::before { transform: translateX(20px); background: var(--ok); }
+.toggle input:focus-visible + .toggle-track { outline: 2px solid var(--amber); outline-offset: 2px; }
+.toggle input:disabled + .toggle-track { opacity: 0.35; }
 
 /* === Modals === */
 
 .modal-overlay {
   display: none;
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
+  inset: 0;
+  background: rgba(6, 7, 5, 0.82);
   z-index: 200;
   justify-content: center;
-  align-items: center;
-}
-
-.modal-overlay.open {
-  display: flex;
-}
-
-.modal {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  width: 90%;
-  max-width: 480px;
-  max-height: 90vh;
+  align-items: flex-start;
+  padding: 40px 16px;
   overflow-y: auto;
 }
+
+.modal-overlay.open { display: flex; }
+
+.modal {
+  background: var(--shell-800);
+  border: 1px solid var(--rule-bright);
+  border-radius: var(--radius);
+  width: 100%;
+  max-width: 520px;
+  margin: auto;
+}
+
+.modal-wide { max-width: 680px; }
+
+/* Agent prompts. Monospace because they're meant to be copied verbatim into
+   another tool, and selectable so a partial copy is possible too. */
+.prompt {
+  margin-top: 10px;
+  padding: 12px 14px;
+  background: var(--shell-700);
+  border: 1px solid var(--rule-bright);
+  border-radius: var(--radius);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  user-select: text;
+}
+
+.link { color: var(--amber); text-decoration: none; border-bottom: 1px solid transparent; }
+.link:hover { border-bottom-color: var(--amber); }
+
+.steps ul, ul.steps { list-style: disc; }
 
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--rule);
 }
 
 .modal-header h2 {
+  font-family: var(--display);
   font-size: 18px;
   font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.modal-subject {
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--amber);
+  margin-left: auto;
 }
 
 .modal-close {
   background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 24px;
-  cursor: pointer;
-  padding: 0 4px;
+  border: 1px solid var(--rule-bright);
+  border-radius: var(--radius);
+  color: var(--ink-mute);
+  width: 26px; height: 26px;
+  font-size: 15px;
   line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.modal-close:hover { color: var(--fault); border-color: var(--fault); }
+
+.modal-body { padding: 18px; }
+
+/* Consolidated config panel: four sections that used to be four modals. */
+.cfg-section { border-top: 1px solid var(--rule); padding: 16px 0; }
+.cfg-section:first-child { border-top: none; padding-top: 0; }
+.cfg-section:last-child { padding-bottom: 0; }
+
+.cfg-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
 }
 
-.modal-close:hover {
-  color: var(--text-primary);
-}
-
-.modal-body {
-  padding: 20px;
-}
-
-.setting-group {
-  margin-bottom: 16px;
-}
-
-.setting-label {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin-bottom: 6px;
-}
-
-.setting-input {
-  width: 100%;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  color: var(--text-primary);
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
+.cfg-title {
+  font-family: var(--display);
   font-size: 14px;
-  font-family: inherit;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink);
 }
 
-.setting-input:focus {
-  outline: none;
-  border-color: var(--accent);
+/* Run controls, mirrored into the config panel so everything about one server
+   is reachable from one place. */
+.cfg-actions { display: flex; gap: 8px; margin-bottom: 14px; }
+
+/* Label + explanation on the left, control on the right. */
+.cfg-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
 }
 
-.setting-hint {
+.cfg-row + .cfg-row { margin-top: 12px; }
+.cfg-row .hint { margin-top: 2px; }
+
+.cfg-row-label {
   display: block;
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-top: 4px;
+  font-family: var(--display);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
 }
 
-.setting-actions {
+/* The two values the user has to carry over to their router. */
+.port-callout {
+  background: var(--shell-700);
+  border: 1px solid var(--rule-bright);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin: 12px 0;
+}
+
+.port-callout-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.port-callout-row + .port-callout-row { margin-top: 7px; }
+.port-callout-row .val { font-size: 15px; color: var(--amber); text-align: right; }
+
+.steps {
+  margin: 0 0 4px;
+  padding-left: 18px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink-dim);
+}
+
+.steps li { margin-bottom: 5px; }
+.steps li::marker { color: var(--ink-mute); font-variant-numeric: tabular-nums; }
+.steps strong { color: var(--ink); font-weight: 600; }
+.steps .val { font-size: 13px; color: var(--ink); }
+
+/* Highlight the section when the card's Router Setup chip deep-links into it.
+   A background tint, not an accent stripe — the ban applies here too. */
+#cfg-ports-section:focus { outline: none; }
+
+#cfg-ports-section.flagged {
+  background: var(--amber-field);
+  box-shadow: 0 0 0 12px var(--amber-field); /* design-check: allow no-shadow — bleeds the tint past the section's padding box; not elevation */
+  border-radius: var(--radius);
+}
+
+.modal-actions {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
-  margin-top: 20px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--rule);
 }
 
-.btn-primary {
-  background: var(--accent);
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: var(--radius-sm);
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.btn-primary:hover {
-  background: var(--accent-dim);
-}
-
-.btn-secondary {
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-  border: 1px solid var(--border);
-  padding: 10px 20px;
-  border-radius: var(--radius-sm);
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.btn-secondary:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-/* Backup list in modal */
 .backup-list {
-  max-height: 200px;
+  max-height: 150px;
   overflow-y: auto;
-  background: var(--bg-surface);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  margin-top: 8px;
 }
 
 .backup-item {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 8px 12px;
+  gap: 12px;
+  padding: 6px 10px;
+  font-family: var(--mono);
   font-size: 12px;
-  border-bottom: 1px solid var(--border);
+  color: var(--ink-dim);
+  border-bottom: 1px solid var(--shell-700);
 }
+.backup-item:last-child { border-bottom: none; }
 
-.backup-item:last-child {
-  border-bottom: none;
-}
-
-.backup-item-time {
-  color: var(--text-primary);
-}
-
-.backup-item-size {
-  color: var(--text-secondary);
-  font-family: 'Consolas', 'Monaco', monospace;
-}
-
-.schedule-server-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--accent);
-  margin-bottom: 16px;
-}
-
-/* === Toast notifications === */
-
-.toast-container {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  z-index: 1000;
-}
-
-.toast {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 12px 16px;
-  font-size: 13px;
-  color: var(--text-primary);
-  animation: slideIn 0.3s ease;
-  max-width: 320px;
-}
-
-.toast.success {
-  border-left: 3px solid var(--green);
-}
-
-.toast.error {
-  border-left: 3px solid var(--red);
-}
-
-.toast.info {
-  border-left: 3px solid var(--accent);
-}
-
-@keyframes slideIn {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-/* === Mobile responsive === */
-
-@media (max-width: 768px) {
-  .topbar {
-    flex-direction: column;
-    align-items: flex-start;
-    padding: 12px 16px;
-    gap: 10px;
-  }
-
-  .topbar-right {
-    width: 100%;
-    gap: 12px;
-  }
-
-  .sys-bar {
-    width: 60px;
-  }
-
-  .subtitle {
-    display: none;
-  }
-
-  .server-grid {
-    grid-template-columns: 1fr;
-    padding: 12px;
-    gap: 12px;
-  }
-
-  .server-card {
-    padding: 16px;
-  }
-
-  .game-name {
-    font-size: 16px;
-  }
-
-  .event-log-section {
-    padding: 0 12px;
-  }
-
-  .event-row {
-    flex-wrap: wrap;
-    gap: 6px;
-    padding: 10px 16px;
-  }
-
-  .event-time {
-    min-width: auto;
-    width: 100%;
-  }
-
-  .modal {
-    width: 95%;
-    margin: 16px;
-  }
-}
-
-@media (max-width: 480px) {
-  .topbar-right {
-    gap: 8px;
-  }
-
-  .sys-label {
-    font-size: 11px;
-    min-width: 24px;
-  }
-
-  .sys-bar {
-    width: 50px;
-  }
-
-  .sys-value {
-    font-size: 12px;
-  }
-}
-
-/* --- Reorder servers modal --- */
-
-.reorder-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 16px;
-}
+/* Reorder */
+.reorder-list { display: flex; flex-direction: column; gap: 5px; }
 
 .reorder-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 14px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  padding: 8px 12px;
+  background: var(--shell-700);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
   cursor: grab;
   user-select: none;
 }
 
-.reorder-item.dragging {
-  opacity: 0.4;
-  cursor: grabbing;
-}
-
-.reorder-handle {
-  color: var(--text-muted);
-  font-size: 14px;
-  flex-shrink: 0;
-}
+.reorder-item.dragging { opacity: 0.35; }
+.reorder-handle { color: var(--ink-mute); flex-shrink: 0; }
 
 .reorder-name {
   flex: 1;
-  color: var(--text-primary);
-  font-size: 14px;
+  font-family: var(--display);
+  font-size: 15px;
   font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+  min-width: 0;
 }
 
-.reorder-subname {
-  color: var(--text-secondary);
-  font-weight: 400;
-}
-
-.reorder-arrows {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;
-}
+.reorder-sub { color: var(--ink-mute); font-weight: 400; letter-spacing: 0; text-transform: none; }
+.reorder-arrows { display: flex; gap: 4px; flex-shrink: 0; }
 
 .reorder-arrows button {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text-secondary);
-  font-size: 11px;
-  width: 30px;
-  height: 30px;
+  background: var(--shell-800);
+  border: 1px solid var(--rule-bright);
+  border-radius: var(--radius);
+  color: var(--ink-dim);
+  width: 26px; height: 26px;
+  font-size: 9px;
   cursor: pointer;
-  font-family: inherit;
+}
+.reorder-arrows button:hover { color: var(--amber); border-color: var(--amber); }
+
+/* === Toasts === */
+
+.toast-container {
+  position: fixed;
+  bottom: 18px; right: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  z-index: 1000;
+  max-width: 340px;
 }
 
-.reorder-arrows button:hover {
-  color: var(--text-primary);
-  border-color: var(--accent);
+/* Full keyed border, not a 3px left stripe (banned pattern, and it read as a
+   generated-UI tell here exactly as it did on the cards). */
+.toast {
+  background: var(--shell-600);
+  border: 1px solid var(--rule-bright);
+  border-radius: var(--radius);
+  padding: 9px 13px;
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.toast.success { border-color: var(--ok); }
+.toast.error { border-color: var(--fault); }
+.toast.info { border-color: var(--amber); }
+
+/* === Responsive === */
+
+/* Two rows, not three: brand and tools share the first, the stat rack takes
+   the second full-width. Ordering matters — the rack is between them in source
+   order, so without it the tools get pushed onto a third row. */
+@media (max-width: 900px) {
+  .topbar { flex-wrap: wrap; gap: 0; }
+  .brand { border-right: none; padding: 12px 16px; }
+  .tools { order: 2; margin-left: auto; border-left: none; }
+  .sys-rack { order: 3; width: 100%; margin-left: 0; border-top: 1px solid var(--rule); }
+  .sys-stat { flex: 1; min-width: 0; }
+  .sys-stat:first-child { border-left: none; }
+  .logo { font-size: 22px; }
+}
+
+/* Three stats abreast can't hold a 132px floor on a phone (3 x 132 > 375),
+   and the values must not wrap — so stack label over value instead. */
+@media (max-width: 560px) {
+  .sys-stat { min-width: 0; padding: 7px 10px; }
+  .sys-head { flex-direction: column; align-items: flex-start; gap: 1px; }
+  .sys-value { font-size: 11px; }
+}
+
+@media (max-width: 620px) {
+  .server-grid { grid-template-columns: 1fr; padding: 12px; gap: 10px; }
+  .game-name { font-size: 26px; }
+  .event-log-section { padding: 0 12px; }
+  .event-row { grid-template-columns: 1fr; gap: 3px; padding: 10px 14px; }
+  .event-type { justify-self: start; }
+  .sys-stat { padding: 8px 12px; min-width: 0; }
+}
+
+/* Belt and braces: nothing animates for a user who asked for stillness. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

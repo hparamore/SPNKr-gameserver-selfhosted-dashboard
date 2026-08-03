@@ -7,8 +7,6 @@ Built for the case where you and a handful of friends want a few dedicated serve
 running at home without paying a hosting company, and without SSHing into a box every
 time someone wants to play something.
 
-![Dark-themed dashboard with one card per game server](docs/screenshot.png)
-
 ## What it does
 
 - **One card per server** — status, players online, RAM, uptime, connect address, copy buttons
@@ -33,7 +31,7 @@ time someone wants to play something.
 ## Quick start
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/game-server-dashboard.git C:\GameServers\Dashboard
+git clone https://github.com/hparamore/game-server-dashboard.git C:\GameServers\Dashboard
 cd C:\GameServers\Dashboard
 npm install
 copy config.example.json config.json

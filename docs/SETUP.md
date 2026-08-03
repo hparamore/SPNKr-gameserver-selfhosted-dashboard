@@ -52,7 +52,7 @@ Minecraft Bedrock or Terraria.
 ## 3. Install the dashboard
 
 ```powershell
-git clone https://github.com/YOUR_USERNAME/game-server-dashboard.git C:\GameServers\Dashboard
+git clone https://github.com/hparamore/game-server-dashboard.git C:\GameServers\Dashboard
 cd C:\GameServers\Dashboard
 npm install
 Copy-Item config.example.json config.json

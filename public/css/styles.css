@@ -349,6 +349,37 @@ body > * { position: relative; z-index: 1; }
 
 .server-card.is-stopped .game-name { color: var(--ink-dim); }
 
+/* --- Header image ---------------------------------------------------------
+   Full-bleed band across the top of the plate. Cards in a row stretch to the
+   tallest, so a row containing one image card gains 200px for all of them; the
+   slack collects above the config bar rather than distorting anything.
+   The scrim keeps the plate reading as one object instead of a photo with a
+   card stuck underneath it. */
+.card-image {
+  position: relative;
+  height: 200px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--rule);
+  background: var(--shell-750);
+  overflow: hidden;
+}
+
+.card-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.card-image::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 56px;
+  background: linear-gradient(to bottom, transparent, rgba(12, 13, 11, 0.72));
+  pointer-events: none;
+}
+
 .card-head {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -490,7 +521,17 @@ body > * { position: relative; z-index: 1; }
 
 /* --- Connect block. The thing you came here to copy. --- */
 
-.card-connect { padding: 12px var(--pad); }
+/* Absorbs the slack when a card in this row is taller (usually because a
+   neighbour has a header image and this one doesn't). Centring the rows inside
+   the grown block turns what was a 200px void above the config bar into even
+   breathing room, which reads as deliberate rather than broken. */
+.card-connect {
+  padding: 12px var(--pad);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
 
 .connect-row {
   display: flex;
@@ -1090,6 +1131,72 @@ select.input:hover { border-color: var(--ink-mute); }
   background: var(--amber-field);
   box-shadow: 0 0 0 12px var(--amber-field); /* design-check: allow no-shadow — bleeds the tint past the section's padding box; not elevation */
   border-radius: var(--radius);
+}
+
+/* --- Header image config + cropper --- */
+
+.header-preview {
+  aspect-ratio: 2.5 / 1;
+  margin: 12px 0 10px;
+  background: var(--shell-700);
+  border: 1px solid var(--rule-bright);
+  border-radius: var(--radius);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.header-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.header-preview-empty {
+  font-family: var(--display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+
+/* The file input is visually hidden; this label is the visible control, so it
+   needs the button's own focus treatment when the input is focused. */
+.header-pick { display: inline-block; cursor: pointer; }
+#cfg-header-file:focus-visible + .header-pick,
+.header-pick:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+.crop-frame {
+  position: relative;
+  aspect-ratio: 2.5 / 1;
+  overflow: hidden;
+  background: var(--shell-900);
+  border: 1px solid var(--rule-bright);
+  border-radius: var(--radius);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.crop-frame.dragging { cursor: grabbing; }
+
+.crop-frame img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  max-width: none;
+  will-change: transform;
+}
+
+.crop-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.crop-controls input[type='range'] {
+  flex: 1;
+  accent-color: var(--amber);
 }
 
 .modal-actions {

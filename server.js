@@ -37,7 +37,9 @@ const io = new Server(httpServer, {
 });
 
 // Middleware
-app.use(express.json());
+// 8mb: header-image uploads arrive as base64 data URLs, which blow past
+// express.json()'s 100kb default. The route caps the decoded image at 6mb.
+app.use(express.json({ limit: '8mb' }));
 
 // Serve static frontend files
 app.use(express.static(join(__dirname, 'public')));
@@ -60,6 +62,12 @@ io.on('connection', (socket) => {
     console.log(`Client disconnected: ${socket.id}`);
   });
 });
+
+// Resolve a server's header image to a cache-busted URL, or null if unset.
+function headerImageUrl(serverId) {
+  const version = getSetting(`headerImage:${serverId}`);
+  return version ? `/uploads/${serverId}.jpg?v=${version}` : null;
+}
 
 // Poll all servers and emit updates
 async function pollAndEmit(target) {
@@ -98,7 +106,10 @@ async function pollAndEmit(target) {
           idleShutdown: getIdleTimeout(server.id) || null,
           // Router config can't be detected from here — the user tells us once
           // they've done it, and the card nags with a chip until they do.
-          portForwarded: getSetting(`portForwarded:${server.id}`) === 'true'
+          portForwarded: getSetting(`portForwarded:${server.id}`) === 'true',
+          // A URL, never the image itself — this payload ships every 10s.
+          // The stored value is a version stamp doubling as a cache-buster.
+          headerImage: headerImageUrl(server.id)
         };
       })
     );

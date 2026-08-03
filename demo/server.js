@@ -18,6 +18,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { existsSync, mkdirSync, writeFileSync, rmSync } from 'fs';
 import {
   init as initDatabase,
   logEvent,
@@ -223,9 +224,17 @@ function buildServerPayload() {
       schedule: scheduleFor(s.id),
       backup: backupFor(s.id),
       idleShutdown: parseFloat(getSetting(`idleShutdown:${s.id}`)) || null,
-      portForwarded: getSetting(`portForwarded:${s.id}`) === 'true'
+      portForwarded: getSetting(`portForwarded:${s.id}`) === 'true',
+      headerImage: headerImageUrl(s.id)
     };
   });
+}
+
+const UPLOAD_DIR = join(__dirname, '..', 'public', 'uploads');
+
+function headerImageUrl(serverId) {
+  const version = getSetting(`headerImage:${serverId}`);
+  return version ? `/uploads/${serverId}.jpg?v=${version}` : null;
 }
 
 function scheduleFor(serverId) {
@@ -298,7 +307,7 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: { origin: '*' } });
 
-app.use(express.json());
+app.use(express.json({ limit: '8mb' }));
 app.use(express.static(join(__dirname, '..', 'public')));
 
 // Log an event to the DB and push it to every connected client, so the event
@@ -509,6 +518,41 @@ app.post('/api/servers/:id/backup/now', (req, res) => {
 
   setTimeout(broadcast, 100);
   res.json({ success: true, filename: `backup_${stamp}`, size });
+});
+
+app.post('/api/servers/:id/header', (req, res) => {
+  const server = byId(req.params.id);
+  if (!server) return res.status(404).json({ error: 'Server not found' });
+
+  const match = /^data:image\/(jpeg|png|webp);base64,(.+)$/.exec(req.body.image || '');
+  if (!match) return res.status(400).json({ error: 'Expected a base64 image data URL' });
+
+  const buffer = Buffer.from(match[2], 'base64');
+  if (buffer.length > 6 * 1024 * 1024) return res.status(413).json({ error: 'Image too large' });
+
+  if (!existsSync(UPLOAD_DIR)) mkdirSync(UPLOAD_DIR, { recursive: true });
+  const safeId = String(server.id).replace(/[^a-z0-9_-]/gi, '');
+  writeFileSync(join(UPLOAD_DIR, `${safeId}.jpg`), buffer);
+
+  const version = Date.now().toString();
+  setSetting(`headerImage:${server.id}`, version);
+  emitEvent(server.id, 'header.config', 'Header image updated', 'user');
+  setTimeout(broadcast, 50);
+  res.json({ success: true, url: `/uploads/${safeId}.jpg?v=${version}` });
+});
+
+app.delete('/api/servers/:id/header', (req, res) => {
+  const server = byId(req.params.id);
+  if (!server) return res.status(404).json({ error: 'Server not found' });
+
+  const safeId = String(server.id).replace(/[^a-z0-9_-]/gi, '');
+  const file = join(UPLOAD_DIR, `${safeId}.jpg`);
+  if (existsSync(file)) rmSync(file);
+
+  setSetting(`headerImage:${server.id}`, '');
+  emitEvent(server.id, 'header.config', 'Header image removed', 'user');
+  setTimeout(broadcast, 50);
+  res.json({ success: true });
 });
 
 app.get('/api/servers/:id/port-forward', (req, res) => {

@@ -140,6 +140,13 @@ function buildCard(server) {
   const root = el('div', 'server-card');
   root.dataset.id = server.id;
 
+  // --- optional header image ---
+  const imageBand = el('div', 'card-image');
+  const image = document.createElement('img');
+  image.alt = '';
+  imageBand.append(image);
+  imageBand.style.display = 'none';
+
   // --- head ---
   const head = el('div', 'card-head');
 
@@ -208,9 +215,10 @@ function buildCard(server) {
   configBtn.dataset.action = 'configure';
   config.append(summary, configBtn);
 
-  root.append(head, stats, connect, config);
+  root.append(imageBand, head, stats, connect, config);
 
   const refs = {
+    imageBand, image,
     tubes, gameName, displayName, statusText, primaryBtn, restartBtn,
     players: players.value, ram: ram.value, uptime: uptime.value,
     addrValue, addrCopy, passRow, passValue, passCopy, summary, configBtn
@@ -300,6 +308,17 @@ function updateCard(card, server) {
     card.flashTimer = setTimeout(() => card.root.classList.remove('state-changed'), 400);
   }
   card.status = state;
+
+  if (server.headerImage) {
+    if (refs.image.getAttribute('src') !== server.headerImage) {
+      refs.image.src = server.headerImage;
+      refs.image.alt = `${server.name} header`;
+    }
+    refs.imageBand.style.display = '';
+  } else {
+    refs.imageBand.style.display = 'none';
+    refs.image.removeAttribute('src');
+  }
 
   setText(refs.gameName, server.name);
   setText(refs.displayName, server.displayName || '');
@@ -521,6 +540,7 @@ async function openConfig(id, section) {
 
   $('config-subject').textContent = server.name;
   syncPowerSection(server);
+  setHeaderPreview(server.headerImage || null);
 
   // Port forwarding
   $('cfg-ports-value').textContent = server.ports || 'None listed';
@@ -823,6 +843,209 @@ function renderBackupList(backups) {
     row.append(el('span', null, b.size_bytes
       ? `${(b.size_bytes / 1048576).toFixed(1)} MB` : ''));
     list.append(row);
+  }
+}
+
+// === Header image + cropper ==================================================
+//
+// The frame is fixed at the card header's 2.5:1 aspect and the image moves
+// behind it, so a wrongly-shaped result is not reachable. The image is always
+// clamped to cover the frame, so no empty gutter can be cropped either.
+
+const CROP_ASPECT = 2.5;
+const CROP_OUT_W = 1000;          // 2x the widest card, for hi-dpi
+const CROP_OUT_H = CROP_OUT_W / CROP_ASPECT;
+
+const crop = { img: null, natural: { w: 0, h: 0 }, base: 1, zoom: 1, x: 0, y: 0 };
+
+$('cfg-header-file').addEventListener('change', e => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';                      // re-picking the same file must fire
+  if (!file) return;
+
+  if (file.size > 25 * 1024 * 1024) {
+    showToast('That image is very large — try one under 25 MB', 'error');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => openCropper(reader.result);
+  reader.onerror = () => showToast('Could not read that file', 'error');
+  reader.readAsDataURL(file);
+});
+
+function openCropper(dataUrl) {
+  const img = $('crop-image');
+  img.onload = () => {
+    crop.natural = { w: img.naturalWidth, h: img.naturalHeight };
+    openModal('crop-overlay');
+    // Frame width is only real once the modal is displayed.
+    setTimeout(() => {
+      fitCrop();
+      $('crop-zoom').value = 100;
+    }, 0);
+  };
+  img.onerror = () => showToast('That file is not a readable image', 'error');
+  img.src = dataUrl;
+}
+
+function frameSize() {
+  const frame = $('crop-frame');
+  return { w: frame.clientWidth, h: frame.clientHeight };
+}
+
+// Scale that exactly covers the frame — the floor for zoom.
+function fitCrop() {
+  const { w, h } = frameSize();
+  crop.base = Math.max(w / crop.natural.w, h / crop.natural.h);
+  crop.zoom = 1;
+  const scaled = crop.base;
+  crop.x = (w - crop.natural.w * scaled) / 2;   // centre by default
+  crop.y = (h - crop.natural.h * scaled) / 2;
+  applyCrop();
+}
+
+// Keep the image covering the frame on every move, so no gap can appear.
+function clampCrop() {
+  const { w, h } = frameSize();
+  const scale = crop.base * crop.zoom;
+  const dw = crop.natural.w * scale;
+  const dh = crop.natural.h * scale;
+  crop.x = Math.min(0, Math.max(w - dw, crop.x));
+  crop.y = Math.min(0, Math.max(h - dh, crop.y));
+}
+
+function applyCrop() {
+  clampCrop();
+  const scale = crop.base * crop.zoom;
+  $('crop-image').style.transform =
+    `translate(${crop.x}px, ${crop.y}px) scale(${scale})`;
+}
+
+$('crop-zoom').addEventListener('input', e => {
+  const { w, h } = frameSize();
+  const next = parseInt(e.target.value, 10) / 100;
+
+  // Zoom about the frame's centre rather than the image origin, otherwise the
+  // subject drifts out of frame as you zoom.
+  const prevScale = crop.base * crop.zoom;
+  const nextScale = crop.base * next;
+  const cx = (w / 2 - crop.x) / prevScale;
+  const cy = (h / 2 - crop.y) / prevScale;
+  crop.zoom = next;
+  crop.x = w / 2 - cx * nextScale;
+  crop.y = h / 2 - cy * nextScale;
+  applyCrop();
+});
+
+(() => {
+  const frame = $('crop-frame');
+  let dragging = false;
+  let startX = 0, startY = 0, originX = 0, originY = 0;
+
+  frame.addEventListener('pointerdown', e => {
+    dragging = true;
+    frame.classList.add('dragging');
+    frame.setPointerCapture(e.pointerId);
+    startX = e.clientX; startY = e.clientY;
+    originX = crop.x; originY = crop.y;
+  });
+
+  frame.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    crop.x = originX + (e.clientX - startX);
+    crop.y = originY + (e.clientY - startY);
+    applyCrop();
+  });
+
+  const end = e => {
+    dragging = false;
+    frame.classList.remove('dragging');
+    if (e.pointerId !== undefined && frame.hasPointerCapture?.(e.pointerId)) {
+      frame.releasePointerCapture(e.pointerId);
+    }
+  };
+  frame.addEventListener('pointerup', end);
+  frame.addEventListener('pointercancel', end);
+})();
+
+$('crop-apply').addEventListener('click', async () => {
+  const id = configServerId;
+  if (!id) return;
+
+  const { w, h } = frameSize();
+  const scale = crop.base * crop.zoom;
+
+  // Map the frame rectangle back into source-image coordinates.
+  const sx = -crop.x / scale;
+  const sy = -crop.y / scale;
+  const sw = w / scale;
+  const sh = h / scale;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = CROP_OUT_W;
+  canvas.height = CROP_OUT_H;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage($('crop-image'), sx, sy, sw, sh, 0, 0, CROP_OUT_W, CROP_OUT_H);
+
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.86);
+  closeModal();
+  showToast('Saving image…', 'info');
+
+  try {
+    const res = await fetch(`/api/servers/${id}/header`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: dataUrl })
+    });
+    const data = await res.json();
+    if (data.success) {
+      const server = cachedServers.find(s => s.id === id);
+      if (server) server.headerImage = data.url;
+      renderServers(cachedServers);
+      setHeaderPreview(data.url);
+      showToast('Header image saved', 'success');
+    } else {
+      showToast(data.error || 'Could not save image', 'error');
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  }
+});
+
+$('cfg-header-remove').addEventListener('click', async () => {
+  const id = configServerId;
+  if (!id) return;
+  try {
+    const res = await fetch(`/api/servers/${id}/header`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      const server = cachedServers.find(s => s.id === id);
+      if (server) server.headerImage = null;
+      renderServers(cachedServers);
+      setHeaderPreview(null);
+      showToast('Header image removed', 'success');
+    } else {
+      showToast('Could not remove image', 'error');
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  }
+});
+
+function setHeaderPreview(url) {
+  const box = $('cfg-header-preview');
+  box.textContent = '';
+  if (url) {
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = 'Current header image';
+    box.append(img);
+    $('cfg-header-remove').style.display = '';
+  } else {
+    box.append(el('span', 'header-preview-empty', 'No image'));
+    $('cfg-header-remove').style.display = 'none';
   }
 }
 

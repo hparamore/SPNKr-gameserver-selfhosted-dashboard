@@ -3,7 +3,7 @@
 // schedules, settings, event log, player queries, and updates.
 
 import { Router } from 'express';
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import {
@@ -534,6 +534,67 @@ router.put('/servers/:id/port-forward', (req, res) => {
   } catch (error) {
     console.error(`Error updating port-forward state for ${req.params.id}:`, error);
     res.status(500).json({ error: 'Failed to update port forwarding state' });
+  }
+});
+
+// --- Header images ---
+// Stored as files under public/uploads rather than base64 in the settings
+// table, so the 10s poll payload stays small — it carries a URL, not an image.
+// The setting holds a version stamp, which doubles as a cache-buster.
+
+const UPLOAD_DIR = join(__dirname, '..', '..', 'public', 'uploads');
+const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
+
+// POST /api/servers/:id/header — { image: "data:image/jpeg;base64,..." }
+router.post('/servers/:id/header', (req, res) => {
+  try {
+    const server = findServer(req.params.id);
+    if (!server) return res.status(404).json({ error: 'Server not found' });
+
+    const match = /^data:image\/(jpeg|png|webp);base64,(.+)$/.exec(req.body.image || '');
+    if (!match) {
+      return res.status(400).json({ error: 'Expected a base64 JPEG, PNG or WebP data URL' });
+    }
+
+    const buffer = Buffer.from(match[2], 'base64');
+    if (buffer.length > MAX_IMAGE_BYTES) {
+      return res.status(413).json({ error: 'Image too large' });
+    }
+
+    if (!existsSync(UPLOAD_DIR)) mkdirSync(UPLOAD_DIR, { recursive: true });
+
+    // Server ids come from config.json, but this value builds a filesystem
+    // path, so it is sanitised regardless.
+    const safeId = String(server.id).replace(/[^a-z0-9_-]/gi, '');
+    writeFileSync(join(UPLOAD_DIR, `${safeId}.jpg`), buffer);
+
+    const version = Date.now().toString();
+    setSetting(`headerImage:${server.id}`, version);
+    logEvent(server.id, 'header.config', 'Header image updated', 'user');
+
+    res.json({ success: true, url: `/uploads/${safeId}.jpg?v=${version}` });
+  } catch (error) {
+    console.error(`Error saving header image for ${req.params.id}:`, error);
+    res.status(500).json({ error: 'Failed to save header image' });
+  }
+});
+
+// DELETE /api/servers/:id/header
+router.delete('/servers/:id/header', (req, res) => {
+  try {
+    const server = findServer(req.params.id);
+    if (!server) return res.status(404).json({ error: 'Server not found' });
+
+    const safeId = String(server.id).replace(/[^a-z0-9_-]/gi, '');
+    const file = join(UPLOAD_DIR, `${safeId}.jpg`);
+    if (existsSync(file)) rmSync(file);
+
+    setSetting(`headerImage:${server.id}`, '');
+    logEvent(server.id, 'header.config', 'Header image removed', 'user');
+    res.json({ success: true });
+  } catch (error) {
+    console.error(`Error removing header image for ${req.params.id}:`, error);
+    res.status(500).json({ error: 'Failed to remove header image' });
   }
 });
 

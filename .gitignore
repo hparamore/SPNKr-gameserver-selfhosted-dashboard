@@ -22,3 +22,6 @@ Thumbs.db
 .DS_Store
 .vscode/
 .idea/
+
+# Uploaded header images — user content, not source.
+/public/uploads/

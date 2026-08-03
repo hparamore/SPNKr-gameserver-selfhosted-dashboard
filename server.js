@@ -10,7 +10,7 @@ import apiRoutes from './src/routes/api.js';
 import { loadConfig, getNetwork, getDashboardName } from './src/utils/config.js';
 import { getServiceStatus, getServiceStartType } from './src/services/serverManager.js';
 import { getProcessStats, getSystemStats } from './src/services/processMonitor.js';
-import { init as initDatabase, pruneEvents, setSetting } from './src/db/database.js';
+import { init as initDatabase, pruneEvents, setSetting, getSetting } from './src/db/database.js';
 import { initDiscordBot } from './src/services/discordBot.js';
 import { checkIdleServers, getIdleTimeout } from './src/services/idleMonitor.js';
 import { checkForCrashes } from './src/services/crashDetector.js';
@@ -95,7 +95,10 @@ async function pollAndEmit(target) {
           version: versionInfo,
           schedule: schedules[server.id] || null,
           backup: backupConfigs[server.id] || null,
-          idleShutdown: getIdleTimeout(server.id) || null
+          idleShutdown: getIdleTimeout(server.id) || null,
+          // Router config can't be detected from here — the user tells us once
+          // they've done it, and the card nags with a chip until they do.
+          portForwarded: getSetting(`portForwarded:${server.id}`) === 'true'
         };
       })
     );

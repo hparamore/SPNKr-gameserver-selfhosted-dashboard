@@ -22,7 +22,7 @@ import { updateBackupConfig, executeBackup } from '../services/backupService.js'
 import { updateSchedule, getActiveSchedules } from '../services/scheduler.js';
 import { queryPlayers } from '../services/playerQuery.js';
 import { getCachedVersionInfo, checkForUpdate, executeUpdate, getInstalledVersion } from '../services/updater.js';
-import { loadConfig, getConfigPath, getDashboardName } from '../utils/config.js';
+import { loadConfig, getConfigPath, getDashboardName, getNetwork } from '../utils/config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const router = Router();
@@ -304,12 +304,18 @@ router.put('/servers/:id/schedule', (req, res) => {
   }
 });
 
-// GET /api/branding — display name for the UI header and page title
+// GET /api/branding — display name for the UI header and page title.
+// Also returns the LAN address so the port-forwarding instructions can name
+// this machine's internal IP instead of telling the user to go find it.
 router.get('/branding', (req, res) => {
   try {
-    res.json({ dashboardName: getDashboardName() });
+    const config = loadConfig();
+    res.json({
+      dashboardName: getDashboardName(config),
+      lanAddress: getNetwork(config).lanAddress || null
+    });
   } catch (error) {
-    res.json({ dashboardName: 'Game Server Dashboard' });
+    res.json({ dashboardName: 'Game Server Dashboard', lanAddress: null });
   }
 });
 
@@ -488,6 +494,74 @@ router.put('/servers/:id/idle', (req, res) => {
   } catch (error) {
     console.error(`Error updating idle config for ${req.params.id}:`, error);
     res.status(500).json({ error: 'Failed to update idle config' });
+  }
+});
+
+// --- Port forwarding ---
+// Router config lives outside this machine, so the dashboard can't detect or
+// perform it. All we can do is track whether the user has done it, and keep
+// nagging until they say so. Follows the idle-shutdown pattern: a per-server
+// key in the settings table.
+
+// GET /api/servers/:id/port-forward
+router.get('/servers/:id/port-forward', (req, res) => {
+  try {
+    const server = findServer(req.params.id);
+    if (!server) return res.status(404).json({ error: 'Server not found' });
+
+    res.json({
+      done: getSetting(`portForwarded:${server.id}`) === 'true',
+      ports: server.ports || null
+    });
+  } catch (error) {
+    console.error(`Error getting port-forward state for ${req.params.id}:`, error);
+    res.status(500).json({ error: 'Failed to get port forwarding state' });
+  }
+});
+
+// PUT /api/servers/:id/port-forward — { done: true }
+router.put('/servers/:id/port-forward', (req, res) => {
+  try {
+    const server = findServer(req.params.id);
+    if (!server) return res.status(404).json({ error: 'Server not found' });
+
+    const done = req.body.done === true;
+    setSetting(`portForwarded:${server.id}`, String(done));
+
+    logEvent(server.id, 'ports.config',
+      done ? 'Port forwarding marked complete' : 'Port forwarding marked incomplete', 'user');
+    res.json({ success: true });
+  } catch (error) {
+    console.error(`Error updating port-forward state for ${req.params.id}:`, error);
+    res.status(500).json({ error: 'Failed to update port forwarding state' });
+  }
+});
+
+// --- Auto-recovery (Windows service start type) ---
+// NOTE: distinct from POST /toggle, which sets the start type AND stops the
+// server. That conflation is fine for a kill switch but wrong for a settings
+// toggle — flipping "auto-recover" off should never take a running server down.
+// This endpoint only changes the start type.
+//
+// The start type governs two behaviours at once: whether the service starts on
+// boot, and whether crashDetector is permitted to auto-restart it (it skips
+// servers set to manual). They cannot be configured separately.
+
+// PUT /api/servers/:id/autostart — { enabled: true }
+router.put('/servers/:id/autostart', async (req, res) => {
+  try {
+    const server = findServer(req.params.id);
+    if (!server) return res.status(404).json({ error: 'Server not found' });
+
+    const enabled = req.body.enabled === true;
+    await setServiceStartType(server.serviceName, enabled ? 'auto' : 'manual');
+
+    logEvent(server.id, 'autostart.config',
+      enabled ? 'Auto-recovery enabled' : 'Auto-recovery disabled', 'user');
+    res.json({ success: true });
+  } catch (error) {
+    console.error(`Error updating auto-start for ${req.params.id}:`, error);
+    res.status(500).json({ error: 'Failed to update auto-start' });
   }
 });
 

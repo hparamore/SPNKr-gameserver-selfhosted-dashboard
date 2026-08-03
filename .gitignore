@@ -1,0 +1,22 @@
+# Machine-specific config — holds IPs, passwords, and install paths.
+# Copy config.example.json to config.json and edit it.
+config.json
+
+# SQLite database (event log, schedules, settings, Discord bot token)
+db/
+*.db
+*.db-shm
+*.db-wal
+
+# Dependencies
+node_modules/
+
+# Logs
+logs/
+*.log
+
+# OS / editor cruft
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/

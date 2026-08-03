@@ -1,0 +1,42 @@
+{
+  "_comment": "Copy this file to config.json and edit it. config.json is gitignored because it holds your IPs and server passwords. The 'servers' array starts empty — add entries as you install games (see docs/ADDING_GAMES.md). An example Valheim entry is included below, commented out via the _example key.",
+
+  "dashboardName": "Game Servers",
+  "dashboardPort": 8080,
+  "pollIntervalMs": 10000,
+
+  "paths": {
+    "nssm": "C:/GameServers/Tools/nssm.exe",
+    "steamcmd": "C:/GameServers/SteamCMD/steamcmd.exe"
+  },
+
+  "network": {
+    "publicAddress": "YOUR.PUBLIC.IP.HERE",
+    "lanAddress": "192.168.1.100"
+  },
+
+  "servers": [],
+
+  "_example": {
+    "id": "valheim",
+    "name": "Valheim",
+    "displayName": "My Valheim World",
+    "serviceName": "ValheimServer",
+    "processName": "valheim_server",
+    "installPath": "C:\\GameServers\\Valheim",
+    "savePath": "C:\\GameServers\\Valheim\\SaveData\\worlds_local",
+    "steamAppId": "896660",
+    "steamBeta": null,
+    "ports": "UDP 2456-2458",
+    "queryPort": 2457,
+    "queryProtocol": "a2s",
+    "connectAddress": "YOUR.PUBLIC.IP.HERE:2456",
+    "password": "changeme",
+    "maxPlayers": 10,
+    "logFile": "C:\\GameServers\\Valheim\\logs\\service.log",
+    "gameInfoFile": null,
+    "autoUpdate": true,
+    "remoteAccess": true,
+    "enabled": true
+  }
+}

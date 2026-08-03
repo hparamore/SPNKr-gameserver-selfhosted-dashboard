@@ -1,0 +1,19 @@
+{
+  "name": "game-server-dashboard",
+  "version": "1.0.0",
+  "description": "Self-hosted web dashboard for managing game servers running as Windows services",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.6.2",
+    "cors": "^2.8.5",
+    "discord.js": "^14.26.5",
+    "express": "^4.21.0",
+    "gamedig": "^5.3.2",
+    "node-cron": "^4.2.1",
+    "socket.io": "^4.7.5"
+  }
+}

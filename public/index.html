@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Game Server Dashboard</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <!-- Top system stats bar -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <h1 class="logo" id="dashboard-logo">Servers</h1>
+      <span class="subtitle">Game Server Dashboard</span>
+    </div>
+    <div class="topbar-right">
+      <div class="sys-stat">
+        <span class="sys-label">CPU</span>
+        <div class="sys-bar">
+          <div class="sys-bar-fill" id="sys-cpu-bar"></div>
+        </div>
+        <span class="sys-value" id="sys-cpu">&mdash;</span>
+      </div>
+      <div class="sys-stat">
+        <span class="sys-label">RAM</span>
+        <div class="sys-bar">
+          <div class="sys-bar-fill" id="sys-ram-bar"></div>
+        </div>
+        <span class="sys-value" id="sys-ram">&mdash;</span>
+      </div>
+      <div class="sys-stat">
+        <span class="sys-label">Disk</span>
+        <div class="sys-bar">
+          <div class="sys-bar-fill" id="sys-disk-bar"></div>
+        </div>
+        <span class="sys-value" id="sys-disk">&mdash;</span>
+      </div>
+      <button class="settings-btn" id="privacy-toggle-btn" onclick="togglePrivacy()" title="Hide sensitive info">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="privacy-icon-visible">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+          <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="privacy-icon-hidden" style="display:none">
+          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"></path>
+          <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"></path>
+          <line x1="1" y1="1" x2="23" y2="23"></line>
+          <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"></path>
+        </svg>
+      </button>
+      <button class="settings-btn" onclick="openReorder()" title="Reorder servers">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="8" y1="6" x2="21" y2="6"></line>
+          <line x1="8" y1="12" x2="21" y2="12"></line>
+          <line x1="8" y1="18" x2="21" y2="18"></line>
+          <polyline points="3 8 5 6 3 4"></polyline>
+          <polyline points="5 16 3 18 5 20"></polyline>
+        </svg>
+      </button>
+      <button class="settings-btn" onclick="openSettings()" title="Settings">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Server cards grid -->
+  <main class="server-grid" id="server-grid">
+    <!-- Cards are rendered dynamically by app.js -->
+    <div class="loading">Connecting to dashboard...</div>
+  </main>
+
+  <!-- Event log section -->
+  <section class="event-log-section" id="event-log-section">
+    <div class="event-log-header" onclick="toggleEventLog()">
+      <h2 class="event-log-title">Event Log</h2>
+      <span class="event-log-toggle" id="event-log-toggle">&#9660;</span>
+    </div>
+    <div class="event-log-body" id="event-log-body">
+      <div class="event-log-filters">
+        <select id="event-filter-server" onchange="loadEvents()">
+          <option value="">All Servers</option>
+        </select>
+        <button class="event-refresh-btn" onclick="loadEvents()">Refresh</button>
+      </div>
+      <div class="event-log-list" id="event-log-list">
+        <div class="event-empty">No events yet</div>
+      </div>
+      <div class="event-log-pagination" id="event-log-pagination"></div>
+    </div>
+  </section>
+
+  <!-- Settings modal -->
+  <div class="modal-overlay" id="settings-overlay" onclick="closeSettingsOverlay(event)">
+    <div class="modal" id="settings-modal">
+      <div class="modal-header">
+        <h2>Settings</h2>
+        <button class="modal-close" onclick="closeSettings()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="setting-group">
+          <label class="setting-label">Discord Webhook URL</label>
+          <input type="text" class="setting-input" id="setting-webhook-url" placeholder="https://discord.com/api/webhooks/...">
+          <span class="setting-hint">Paste your Discord webhook URL to receive notifications</span>
+        </div>
+        <div class="setting-group">
+          <label class="setting-label">
+            <input type="checkbox" id="setting-notifications-enabled" checked>
+            Enable Discord Notifications
+          </label>
+        </div>
+        <div class="setting-group" id="notify-categories">
+          <label class="setting-label">Notify me about</label>
+          <label class="setting-label"><input type="checkbox" data-category="status" checked> Server started / stopped</label>
+          <label class="setting-label"><input type="checkbox" data-category="crashes" checked> Crashes &amp; recovery</label>
+          <label class="setting-label"><input type="checkbox" data-category="restarts" checked> Scheduled restart warnings</label>
+          <label class="setting-label"><input type="checkbox" data-category="players" checked> Player joins &amp; leaves</label>
+          <label class="setting-label"><input type="checkbox" data-category="updates" checked> Game updates</label>
+          <label class="setting-label"><input type="checkbox" data-category="backups" checked> Backups</label>
+          <label class="setting-label"><input type="checkbox" data-category="idle" checked> Idle shutdowns</label>
+        </div>
+        <div class="setting-actions">
+          <button class="btn-secondary" onclick="testDiscord()">Test Webhook</button>
+          <button class="btn-primary" onclick="saveSettings()">Save Settings</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Schedule edit modal -->
+  <div class="modal-overlay" id="schedule-overlay" onclick="closeScheduleOverlay(event)">
+    <div class="modal" id="schedule-modal">
+      <div class="modal-header">
+        <h2>Edit Restart Schedule</h2>
+        <button class="modal-close" onclick="closeSchedule()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="schedule-server-name" id="schedule-server-name"></p>
+        <div class="setting-group">
+          <label class="setting-label">Schedule Preset</label>
+          <select class="setting-input" id="schedule-preset" onchange="onSchedulePresetChange()">
+            <option value="">Disabled</option>
+            <option value="0 4 * * *">Daily at 4:00 AM</option>
+            <option value="0 6 * * *">Daily at 6:00 AM</option>
+            <option value="0 */12 * * *">Every 12 Hours</option>
+            <option value="0 */6 * * *">Every 6 Hours</option>
+            <option value="custom">Custom Cron</option>
+          </select>
+        </div>
+        <div class="setting-group" id="custom-cron-group" style="display:none">
+          <label class="setting-label">Custom Cron Expression</label>
+          <input type="text" class="setting-input" id="schedule-cron-input" placeholder="0 4 * * *">
+          <span class="setting-hint">Format: minute hour day month weekday</span>
+        </div>
+        <div class="setting-actions">
+          <button class="btn-secondary" onclick="closeSchedule()">Cancel</button>
+          <button class="btn-primary" onclick="saveSchedule()">Save Schedule</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Backup management modal -->
+  <div class="modal-overlay" id="backup-overlay" onclick="closeBackupOverlay(event)">
+    <div class="modal" id="backup-modal">
+      <div class="modal-header">
+        <h2>Backup Settings</h2>
+        <button class="modal-close" onclick="closeBackup()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="schedule-server-name" id="backup-server-name"></p>
+        <div class="setting-group" style="display:flex; align-items:center; justify-content:space-between;">
+          <span class="setting-label" style="margin-bottom:0;">Enable Automatic Backups</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="backup-enabled">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="setting-group">
+          <label class="setting-label">Backup Frequency</label>
+          <select class="setting-input" id="backup-preset" onchange="onBackupPresetChange()">
+            <option value="">Select frequency...</option>
+            <option value="0 4 * * *">Daily at 4:00 AM</option>
+            <option value="0 6 * * *">Daily at 6:00 AM</option>
+            <option value="0 */12 * * *">Every 12 Hours</option>
+            <option value="0 */6 * * *">Every 6 Hours</option>
+            <option value="custom">Custom Cron</option>
+          </select>
+        </div>
+        <div class="setting-group" id="backup-custom-cron-group" style="display:none">
+          <label class="setting-label">Custom Cron Expression</label>
+          <input type="text" class="setting-input" id="backup-cron-input" placeholder="0 4 * * *">
+          <span class="setting-hint">Format: minute hour day month weekday</span>
+        </div>
+        <div class="setting-group">
+          <label class="setting-label">Retention</label>
+          <select class="setting-input" id="backup-retention">
+            <option value="3">Keep last 3 backups</option>
+            <option value="5" selected>Keep last 5 backups</option>
+            <option value="10">Keep last 10 backups</option>
+            <option value="20">Keep last 20 backups</option>
+          </select>
+        </div>
+        <div class="setting-actions">
+          <button class="btn-secondary" onclick="triggerBackupNow()">Backup Now</button>
+          <button class="btn-primary" onclick="saveBackupConfig()">Save Settings</button>
+        </div>
+        <div class="setting-group" id="backup-list-group" style="display:none">
+          <label class="setting-label">Recent Backups</label>
+          <div class="backup-list" id="backup-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reorder servers modal -->
+  <div class="modal-overlay" id="reorder-overlay" onclick="closeReorderOverlay(event)">
+    <div class="modal" id="reorder-modal">
+      <div class="modal-header">
+        <h2>Reorder Servers</h2>
+        <button class="modal-close" onclick="closeReorder()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="setting-hint" style="margin-bottom: 12px;">Drag to reorder, or use the arrows. The order applies to the dashboard and Discord.</p>
+        <div class="reorder-list" id="reorder-list"></div>
+        <div class="setting-actions">
+          <button class="btn-secondary" onclick="closeReorder()">Cancel</button>
+          <button class="btn-primary" onclick="saveReorder()">Save Order</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Idle shutdown modal -->
+  <div class="modal-overlay" id="idle-overlay" onclick="closeIdleOverlay(event)">
+    <div class="modal" id="idle-modal">
+      <div class="modal-header">
+        <h2>Idle Shutdown</h2>
+        <button class="modal-close" onclick="closeIdle()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="schedule-server-name" id="idle-server-name"></p>
+        <div class="setting-group">
+          <label class="setting-label">Shut down after no players for</label>
+          <select class="setting-input" id="idle-hours">
+            <option value="0">Never (always stay on)</option>
+            <option value="6">6 hours</option>
+            <option value="12">12 hours</option>
+            <option value="24">24 hours</option>
+            <option value="48">2 days</option>
+            <option value="168">7 days</option>
+          </select>
+          <span class="setting-hint">The server turns itself off after being empty this long. Anyone can turn it back on with /start in Discord.</span>
+        </div>
+        <div class="setting-actions">
+          <button class="btn-secondary" onclick="closeIdle()">Cancel</button>
+          <button class="btn-primary" onclick="saveIdleConfig()">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast notifications -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

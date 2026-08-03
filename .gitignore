@@ -2,8 +2,10 @@
 # Copy config.example.json to config.json and edit it.
 config.json
 
-# SQLite database (event log, schedules, settings, Discord bot token)
-db/
+# SQLite database (event log, schedules, settings, Discord bot token).
+# Leading slash matters: a bare "db/" matches at any depth and would also
+# exclude src/db/, which is source code.
+/db/
 *.db
 *.db-shm
 *.db-wal

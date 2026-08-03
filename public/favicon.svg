@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- SPNKr — the M41 seen down the barrels.
+       Two details taken from the real weapon, both load-bearing:
+       the bores are offset DIAGONALLY (not level side by side), and the
+       housing is a rounded form rather than a hard rectangle.
+       Bores are knocked out of a solid housing with fill-rule="evenodd" —
+       a positive shape survives 16px where thin outlined rings collapse. -->
+  <rect width="32" height="32" fill="#0C0D0B"/>
+  <path fill="#FFB020" fill-rule="evenodd" d="M10 2h12a8 8 0 0 1 8 8v12a8 8 0 0 1-8 8H10a8 8 0 0 1-8-8V10a8 8 0 0 1 8-8Zm1.5 4.1a5.4 5.4 0 1 0 0 10.8 5.4 5.4 0 0 0 0-10.8Zm9.5 9.5a5.4 5.4 0 1 0 0 10.8 5.4 5.4 0 0 0 0-10.8Z"/>
+</svg>

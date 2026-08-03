@@ -50,6 +50,20 @@ Open `http://localhost:8080`. The `servers` array starts empty; see
 For the full walkthrough — including running the dashboard itself as a service so it
 survives reboots — see [docs/SETUP.md](docs/SETUP.md).
 
+## Trying it without a Windows box
+
+The dashboard proper needs Windows, because it manages real services through
+NSSM and PowerShell. To see and work on the interface from any machine:
+
+```bash
+npm install
+npm run demo
+```
+
+That serves the real frontend at `http://localhost:8080` against a synthetic
+fleet of six servers. Nothing on your system is touched. It's how the UI is
+developed and reviewed on macOS and Linux.
+
 ## Using an AI coding agent
 
 The docs in `docs/` are written to be followed by a coding agent (Claude Code, Cursor,
@@ -70,6 +84,8 @@ breaking things.
 | [docs/ADDING_GAMES.md](docs/ADDING_GAMES.md) | Adding a game server end to end, with per-game reference values |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Known failure modes and their fixes |
 | [AGENTS.md](AGENTS.md) | Architecture and conventions, for agents and contributors |
+| [ART-DIRECTION.md](ART-DIRECTION.md) | The binding visual spec for any UI change |
+| [WORK_STATUS.md](WORK_STATUS.md) | Running log of work sessions |
 
 ## Security note
 

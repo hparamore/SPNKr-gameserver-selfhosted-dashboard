@@ -104,6 +104,21 @@ once and quietly destroyed every new backup for weeks.
 **Server `id` is a database key.** Schedules, backups, and settings are keyed on it.
 Changing an `id` orphans that data.
 
+**The database filename must stay backward compatible.** `init()` falls back to
+`db/spnkr.db` when it exists. Removing that fallback does not error — it opens a
+new empty database, and the install loses every schedule, backup config, saved
+setting and its whole event log with a clean startup and no warning.
+
+**`a2s` servers need a `queryGame`.** gamedig v5 removed the generic `valve` type;
+each game has its own id (`valheim`, `enshrouded`, ...). A wrong or missing id
+throws `Invalid game` on every call and the card shows a permanent `—/N` that is
+indistinguishable from an unreachable server. List ids with
+`node -e "console.log(Object.keys(require('gamedig').games))"`.
+
+**Not every game answers a query.** Valheim started with `-public 0` runs no query
+responder at all — the ports bind, nothing replies. No `queryGame` value fixes it.
+That server stays `—/N`, and idle shutdown correctly never stops it.
+
 ## Windows/PowerShell notes
 
 - **NSSM outputs UTF-16** — null bytes between characters when captured via exec.
@@ -120,15 +135,36 @@ Changing an `id` orphans that data.
 
 ## Database
 
-SQLite at `db/dashboard.db`, created on first run by `init()`.
+SQLite, created on first run by `init()`. New installs use `db/dashboard.db`;
+installs predating that name keep `db/spnkr.db`, which `init()` detects.
 
-| Table | Holds |
+**The column lists below are load-bearing.** This file is the reference an agent
+rebuilds `database.js` from when it can't read the original, and a rebuild that
+invented a plausible-but-wrong column name shipped a module that threw the first
+time anyone saved a schedule. If you change the schema, change this table.
+
+| Table | Columns |
 |---|---|
-| `events` | Event log; pruned daily to the newest 10,000 |
-| `schedules` | Cron restart schedule per server |
-| `backup_configs` | Backup schedule + retention per server |
-| `backups` | One row per backup taken |
-| `settings` | Key/value: webhook URL, bot token, muted categories, `idleShutdown:<id>`, `lastPlayerSeen:<id>` |
+| `events` | `id`, `timestamp`, `server_id`, `event_type`, `details`, `source` |
+| `schedules` | `server_id`, `cron_expression`, `skip_if_players`, `enabled`, `updated_at` |
+| `settings` | `key`, `value`, `updated_at` |
+| `backup_configs` | `server_id`, `enabled`, `cron_expression`, `retention_count`, `updated_at` |
+| `backups` | `id`, `server_id`, `timestamp`, `filename`, `size_bytes`, `status` |
+
+Notes on the non-obvious ones:
+
+- `schedules.skip_if_players` means "don't restart while players are connected."
+  It is **not** a warning-sent flag — restart warnings are scheduled in memory by
+  `scheduler.js` and never persisted. `setSchedule`'s third parameter is this.
+- `events` is pruned daily to the newest 10,000 rows.
+- `settings` holds the webhook URL, Discord bot token, muted notification
+  categories, and the per-server `idleShutdown:<id>` and `lastPlayerSeen:<id>`
+  keys.
+
+`CREATE TABLE IF NOT EXISTS` does not alter a table that already exists. On any
+machine with history, a renamed or added column will not appear, and the failure
+surfaces only when a user touches that feature. Test schema changes against a
+copy of a real database — see [docs/UPGRADING.md](docs/UPGRADING.md).
 
 Per-server settings use `key:serverId` naming rather than new tables. Fine at this
 scale; revisit if it sprawls.

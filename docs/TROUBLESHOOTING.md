@@ -103,11 +103,38 @@ Use the process with the large footprint, minus `.exe`. Usual suspects:
 
 The query failed. `—` means "couldn't reach it," `0` means "answered, nobody home."
 
+Check the dashboard log first — the reason is usually printed there.
+
+- **`Invalid game: <id>`** — the `queryGame` in `config.json` isn't a gamedig type.
+  gamedig v5 removed the generic `valve` type and folded `minecraftbe` into
+  `minecraft`, so configs carrying either fail every call. List valid ids:
+  ```powershell
+  node -e "console.log(Object.keys(require('gamedig').games).join('\n'))" | Select-String valheim
+  ```
+- **`no "queryGame" set`** — `a2s` requires it. See docs/ADDING_GAMES.md.
 - Wrong `queryPort` — for A2S it's usually game port **+1**, not the game port
-- Wrong `queryProtocol` for that game
 - Server not fully started (queries fail during world load)
 - Game-specific query API disabled in the game's own config (Palworld's
   `RESTAPIEnabled`, for instance)
+
+### `—/N` with no error in the log at all
+
+The server may not answer queries in the first place. **Valheim started with
+`-public 0` runs no query responder** — the ports are bound but nothing replies,
+and no `queryGame` value changes that.
+
+Confirm with a raw A2S probe against the query port:
+
+```powershell
+node -e "const d=require('dgram'),s=d.createSocket('udp4');s.on('message',m=>{console.log('responded',m.length,'bytes');process.exit()});setTimeout(()=>{console.log('no response');process.exit()},5000);s.send(Buffer.concat([Buffer.from([255,255,255,255,84]),Buffer.from('Source Engine Query\0')]),2457,'127.0.0.1')"
+```
+
+"no response" while the server is running and the port is bound means the game
+isn't answering. For Valheim, switch the start script to `-public 1` — the server
+becomes listable, but a password still gates joining.
+
+Idle shutdown treats `—` as unknown and will never stop such a server, so the
+feature is effectively disabled for it until queries work.
 
 ### Status stuck on "Starting" or "Stopping"
 
@@ -189,6 +216,52 @@ If it's still there a minute later, retention is behaving.
 
 `savePath` must point at the directory the game actually writes saves to, and must
 exist. Verify with `Test-Path`.
+
+---
+
+## After pulling an update
+
+### Everything works, but all history and settings are gone
+
+The new code opened a different database file. The startup banner is the tell:
+
+```
+Scheduler: found 0 schedules in DB
+Backup: found 0 backup configs in DB
+```
+
+`found 0` on a machine that had schedules means a fresh, empty database was
+created beside the real one. Check which files exist:
+
+```powershell
+Get-ChildItem C:\GameServers\Dashboard\db
+```
+
+Two `.db` files means the old one is intact and simply isn't being opened.
+`init()` in `src/db/database.js` prefers `spnkr.db` when present — restore that
+fallback rather than renaming files while the service holds them open. Nothing is
+lost as long as the old file is still there; the Discord bot token, every
+schedule, and the event log all live in it.
+
+### A feature that used to work now returns a 500
+
+Likely a schema change that never applied. `CREATE TABLE IF NOT EXISTS` does not
+alter an existing table, so a renamed or added column exists only on fresh
+installs. The error names the column:
+
+```
+SqliteError: table schedules has no column named warning_sent
+```
+
+Compare what the code writes against what the table actually has:
+
+```powershell
+node -e "const D=require('better-sqlite3');const db=new D('./db/spnkr.db',{readonly:true});console.log(db.prepare('PRAGMA table_info(schedules)').all().map(c=>c.name));db.close()"
+```
+
+Then either correct the code to the real column name, or add a migration. See
+[UPGRADING.md](UPGRADING.md) for a test that catches this before the service
+restarts.
 
 ---
 

@@ -2,6 +2,32 @@
 
 Notable changes to this project. Dates are when the change reached `main`.
 
+## 1.1.1 — 2026-08-04
+
+### Fixed
+
+- **"No servers configured" flashed on every page load.** `cachedServers` starts
+  empty and any of the ~18 `renderServers()` callers can fire before the socket
+  delivers, so the empty-fleet message painted over the "Connecting" placeholder
+  until the first `serverUpdate` arrived. An empty fleet and an unanswered socket
+  are different states: one is a config error to act on, the other resolves
+  itself. Rendering the message now waits for the first payload.
+
+  Brief on a LAN; the whole point of the message is that it's read as an
+  instruction, so on a phone or a slow link it misleads for as long as it shows.
+
+- **A cold load against a stopped dashboard sat on "Connecting" forever.** The
+  link-lost banner was wired to `disconnect`, which can only fire after a
+  connection existed. A first load with nothing listening emits `connect_error`
+  instead, so nothing ever explained the wait. Now handled — socket.io keeps
+  retrying, so the banner's "reconnecting" is accurate.
+
+- `GET /servers/:id/players` reported a failed query as `playerCount: 0` rather
+  than unknown, telling callers a possibly-full server was empty. Same
+  null-vs-zero invariant fixed elsewhere in 1.1.0; the REST endpoint had its own
+  copy. The Socket.IO poll loop was never affected, so cards and idle shutdown
+  were always correct.
+
 ## 1.1.0 — 2026-08-04
 
 First release deployed onto a live Windows host running eight game servers. The

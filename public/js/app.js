@@ -27,6 +27,14 @@ let cachedServers = [];
 const playerCache = {};
 let privacyMode = false;
 
+// False until the first serverUpdate lands. cachedServers starts empty, and any
+// of the ~18 renderServers() callers can fire before the socket delivers — which
+// rendered "No servers configured" over the "Connecting" placeholder on every
+// load. An empty fleet and an unanswered socket are different states and must
+// not look alike: one is a config error the reader should act on, the other
+// resolves itself in a moment.
+let serversLoaded = false;
+
 // View option, global rather than per-server. Held client-side so toggling is
 // instant; persisted through /api/settings so it survives a reload.
 let showServerImages = true;
@@ -44,8 +52,15 @@ const $ = id => document.getElementById(id);
 socket.on('connect', () => document.body.classList.remove('link-down'));
 socket.on('disconnect', () => document.body.classList.add('link-down'));
 
+// A cold load against a stopped dashboard service never fires 'disconnect' —
+// there was no connection to lose — so without this the page sits on
+// "Connecting" indefinitely with nothing explaining why. socket.io keeps
+// retrying, so the banner's "reconnecting" is accurate.
+socket.on('connect_error', () => document.body.classList.add('link-down'));
+
 socket.on('serverUpdate', servers => {
   cachedServers = servers;
+  serversLoaded = true;
   renderServers(servers);
   populateServerFilter(servers);
 });
@@ -257,6 +272,10 @@ function renderServers(servers) {
   if (!grid || !Array.isArray(servers)) return;
 
   if (servers.length === 0) {
+    // Nothing has arrived yet — leave the "Connecting" placeholder in place
+    // rather than accusing the reader of an empty config.
+    if (!serversLoaded) return;
+
     if (!grid.querySelector('.grid-message[data-empty]')) {
       cards.clear();
       grid.textContent = '';

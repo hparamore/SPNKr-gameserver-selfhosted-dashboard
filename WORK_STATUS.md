@@ -5,6 +5,87 @@ session can pick the project up.
 
 ---
 
+## 2026-08-03 (latest+5) — Data audit, optimize pass, shipped to GitHub
+
+### Data-source audit — one real bug
+
+**`queryUDPEndpoint` reported unknown player counts as zero.** `runPS` resolves
+`null` when PowerShell errors; the function turned that into
+`playerCount: 0`. Zero means *confirmed empty*, and `idleMonitor` shuts down
+servers it believes are confirmed empty — so a transient PowerShell failure
+could have shut down a server with people playing on it.
+
+This is exactly the null-vs-zero invariant AGENTS.md warns about, violated in the
+one place that isn't obvious. Fixed; unparseable output now returns `null` too.
+
+### Gaps closed
+
+- **No manual update check existed.** `checkForUpdate()` was exported and
+  imported into api.js but never called from any route — a dead import. The only
+  checks were scheduled at 3:30am/pm. Added `POST /servers/:id/check-update` and
+  a Check Now button with a real busy state, since SteamCMD takes seconds.
+- **Non-SteamCMD games had no update affordance.** Optional per-server
+  `updateUrl` is now surfaced as a link from Configure. This replaces what used
+  to be a *hardcoded Minecraft URL* in the old frontend.
+- **Servers with no player query looked broken.** A game with no `queryProtocol`
+  rendered the same em dash as a game whose query failed. The payload now carries
+  whether a query is configured; the tooltip distinguishes not-configured,
+  did-not-answer, and stopped.
+
+### Optimize pass — nothing to do, and that's the finding
+
+Measured rather than assumed:
+
+- **500 full re-renders in 17.6ms** (0.035ms each). 500 renders is ~83 minutes of
+  polling.
+- **Zero DOM node growth** across those renders; heap flat at 2MB. No leak — this
+  matters because the dashboard is left open for days.
+- Zero cumulative layout shift.
+- All six font weights are genuinely used on the page — no dead weight to drop.
+- All in-memory collections bounded (cards, playerCache, transitioning, updating,
+  event rows, toasts).
+
+The reconcile-in-place architecture is doing its job. Premature optimization was
+declined deliberately; there is no bottleneck to fix.
+
+### Screenshots + tooling
+
+`scripts/screenshots.mjs` — captures eleven states at 2x into `screenshots/`.
+**Zero dependencies**, same constraint as design-check: Chrome is driven over the
+DevTools Protocol using Node's built-in `WebSocket` (Node 22+), so no Puppeteer
+or Playwright install on a host that has nothing but Node.
+
+`screenshots/00-before-original-design.png` is the **pre-redesign UI**, captured
+by extracting the original frontend from git at `28d1fb8`, serving it through the
+demo harness, screenshotting, and restoring. Same six servers, same data, same
+viewport — so the before/after difference is design and nothing else. Worth
+keeping for the portfolio write-up.
+
+**Gotcha:** the first run committed a Chrome profile. The script killed Chrome
+then deleted the profile, but Chrome keeps writing for a moment after being
+killed, so files reappeared inside `screenshots/` and got staged. The profile is
+now created in the system temp dir via `mkdtempSync`, with a gitignore rule as
+belt and braces. Verified by re-running.
+
+### Shipped
+
+Branch `redesign/spnkr`, eleven commits, pushed to origin.
+**PR #1: https://github.com/hparamore/game-server-dashboard/pull/1**
+
+README rewritten around what the product is, how to run it, and how to hand setup
+to a coding agent — including *why* the prompts insist the agent surface elevated
+commands rather than run them.
+
+### Still true
+
+**Nothing here has run against real NSSM services on Windows.** The new endpoints
+are additive and mirror existing patterns, and their logic is exercised through
+the demo against the real `database.js`, but `setServiceStartType` and the upload
+filesystem path are untested on the target platform. That is the first thing to
+check on the real box.
+
+---
+
 ## 2026-08-03 (latest+4) — Ticker removed, motion retargeted, topbar quietened
 
 ### The ticker is gone

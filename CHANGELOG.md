@@ -2,6 +2,34 @@
 
 Notable changes to this project. Dates are when the change reached `main`.
 
+## 1.2.0 — 2026-08-04
+
+### Added
+
+- **Installs to a phone home screen or desktop with the SPNKr mark**, instead of
+  a grey square with an "S". `favicon.svg` covered the browser tab, but nothing
+  else reads it: Chrome's "Install this page as an app" takes its icon from a web
+  app manifest, and iOS "Add to Home Screen" from `apple-touch-icon`. Neither
+  accepts SVG reliably, so both fell back to the platform default.
+
+  Adds `manifest.webmanifest`, `apple-touch-icon.png` (180), and `icon-192.png` /
+  `icon-512.png` declared `any maskable`. Installed, it opens standalone with no
+  browser chrome, titled "SPNKr".
+
+- **`npm run icons`** regenerates those PNGs from `public/img/app-icon.svg`.
+  Zero dependencies, same approach as `design-check` and `screenshots` — Chrome
+  over the DevTools Protocol, no image library.
+
+  The source is a padded variant rather than `favicon.svg` itself: both platforms
+  crop an installed icon to their own shape, so the mark sits at ~62% on a
+  full-bleed field. That keeps it inside Android's maskable safe zone and stops
+  iOS's rounded corners clipping the housing.
+
+### Changed
+
+- `theme-color` is now `#151613`, matching the topbar rather than the page
+  behind it — it tints the status bar directly above that bar.
+
 ## 1.1.3 — 2026-08-04
 
 ### Changed

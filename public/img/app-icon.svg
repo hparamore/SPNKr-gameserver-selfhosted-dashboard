@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Source for the installed-app icons (apple-touch-icon, manifest PNGs).
+       Same mark as favicon.svg, but sized for a masked tile rather than a 16px
+       tab: both iOS and Android crop an installed icon to their own shape, so
+       the mark sits at ~62% on a full-bleed field. That keeps it inside
+       Android's maskable safe zone (the centre 80%) and stops iOS's rounded
+       corners from clipping the housing's own corners.
+       Regenerate the PNGs with: node scripts/icons.mjs -->
+  <rect width="512" height="512" fill="#0C0D0B"/>
+  <g transform="translate(97.5 97.5) scale(9.906)">
+    <path fill="#FFB020" fill-rule="evenodd" d="M10 2h12a8 8 0 0 1 8 8v12a8 8 0 0 1-8 8H10a8 8 0 0 1-8-8V10a8 8 0 0 1 8-8Zm1.5 4.1a5.4 5.4 0 1 0 0 10.8 5.4 5.4 0 0 0 0-10.8Zm9.5 9.5a5.4 5.4 0 1 0 0 10.8 5.4 5.4 0 0 0 0-10.8Z"/>
+  </g>
+</svg>

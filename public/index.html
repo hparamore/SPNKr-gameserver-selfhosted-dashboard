@@ -5,8 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SPNKr</title>
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#0C0D0B">
+  <meta name="theme-color" content="#151613">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+
+  <!-- Installed-app identity. The SVG favicon above covers the browser tab, but
+       nothing else reads it: Chrome's "Install this page as an app" takes its
+       icon from the manifest, and iOS "Add to Home Screen" from
+       apple-touch-icon. Without these you get a grey square with an S.
+       Regenerate the PNGs from public/img/app-icon.svg with: npm run icons -->
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-title" content="SPNKr">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="preload" href="/fonts/barlow-condensed-700.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/fonts/ibm-plex-mono-500.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/css/styles.css">

@@ -10,7 +10,7 @@ import apiRoutes from './src/routes/api.js';
 import { loadConfig, getNetwork, getDashboardName } from './src/utils/config.js';
 import { getServiceStatus, getServiceStartType } from './src/services/serverManager.js';
 import { getProcessStats, getSystemStats } from './src/services/processMonitor.js';
-import { init as initDatabase, pruneEvents, setSetting } from './src/db/database.js';
+import { init as initDatabase, pruneEvents, setSetting, getSetting } from './src/db/database.js';
 import { initDiscordBot } from './src/services/discordBot.js';
 import { checkIdleServers, getIdleTimeout } from './src/services/idleMonitor.js';
 import { checkForCrashes } from './src/services/crashDetector.js';
@@ -37,7 +37,9 @@ const io = new Server(httpServer, {
 });
 
 // Middleware
-app.use(express.json());
+// 8mb: header-image uploads arrive as base64 data URLs, which blow past
+// express.json()'s 100kb default. The route caps the decoded image at 6mb.
+app.use(express.json({ limit: '8mb' }));
 
 // Serve static frontend files
 app.use(express.static(join(__dirname, 'public')));
@@ -60,6 +62,14 @@ io.on('connection', (socket) => {
     console.log(`Client disconnected: ${socket.id}`);
   });
 });
+
+// A custom upload, as a cache-busted URL, or null. Presets are sent separately
+// as an id so the frontend can resolve them without a round trip — the global
+// show/hide toggle is a client-side view option and must apply instantly.
+function headerImageUrl(serverId) {
+  const version = getSetting(`headerImage:${serverId}`);
+  return version ? `/uploads/${serverId}.jpg?v=${version}` : null;
+}
 
 // Poll all servers and emit updates
 async function pollAndEmit(target) {
@@ -92,10 +102,22 @@ async function pollAndEmit(target) {
           ports: server.ports,
           process: processStats,
           steamAppId: server.steamAppId || null,
+          // Where a non-SteamCMD game gets its updates, if the config says.
+          updateUrl: server.updateUrl || null,
+          // Distinguishes "no query configured for this game" from "the query
+          // failed" — both otherwise render as an identical em dash.
+          playerQuery: !!(server.queryProtocol && server.queryPort),
           version: versionInfo,
           schedule: schedules[server.id] || null,
           backup: backupConfigs[server.id] || null,
-          idleShutdown: getIdleTimeout(server.id) || null
+          idleShutdown: getIdleTimeout(server.id) || null,
+          // Router config can't be detected from here — the user tells us once
+          // they've done it, and the card nags with a chip until they do.
+          portForwarded: getSetting(`portForwarded:${server.id}`) === 'true',
+          // A URL, never the image itself — this payload ships every 10s.
+          // The stored value is a version stamp doubling as a cache-buster.
+          headerImage: headerImageUrl(server.id),
+          headerPreset: getSetting(`headerPreset:${server.id}`) || null
         };
       })
     );

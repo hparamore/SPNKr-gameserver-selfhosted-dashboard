@@ -3,52 +3,73 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Game Server Dashboard</title>
+  <title>SPNKr</title>
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0C0D0B">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="/fonts/barlow-condensed-700.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/ibm-plex-mono-500.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
-  <!-- Top system stats bar -->
   <header class="topbar">
-    <div class="topbar-left">
-      <h1 class="logo" id="dashboard-logo">Servers</h1>
-      <span class="subtitle">Game Server Dashboard</span>
+    <div class="brand">
+      <!-- The M41 seen down the barrels: diagonally offset bores in a rounded
+           housing. Same mark as the favicon. -->
+      <svg class="brand-mark" width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"
+           style="color: var(--amber)">
+        <path fill="currentColor" fill-rule="evenodd" d="M10 2h12a8 8 0 0 1 8 8v12a8 8 0 0 1-8 8H10a8 8 0 0 1-8-8V10a8 8 0 0 1 8-8Zm1.5 4.1a5.4 5.4 0 1 0 0 10.8 5.4 5.4 0 0 0 0-10.8Zm9.5 9.5a5.4 5.4 0 1 0 0 10.8 5.4 5.4 0 0 0 0-10.8Z"/>
+      </svg>
+      <div class="brand-text">
+        <h1 class="logo" id="dashboard-logo">SPNKr</h1>
+        <p class="tagline">Self-hosted game server control</p>
+      </div>
     </div>
-    <div class="topbar-right">
+
+    <div class="sys-rack">
       <div class="sys-stat">
-        <span class="sys-label">CPU</span>
-        <div class="sys-bar">
-          <div class="sys-bar-fill" id="sys-cpu-bar"></div>
+        <div class="sys-head">
+          <span class="lbl">CPU</span>
+          <span class="sys-value" id="sys-cpu">&mdash;</span>
         </div>
-        <span class="sys-value" id="sys-cpu">&mdash;</span>
+        <div class="sys-bar"><span class="sys-bar-fill" id="sys-cpu-bar"></span></div>
       </div>
       <div class="sys-stat">
-        <span class="sys-label">RAM</span>
-        <div class="sys-bar">
-          <div class="sys-bar-fill" id="sys-ram-bar"></div>
+        <div class="sys-head">
+          <span class="lbl">Memory</span>
+          <span class="sys-value" id="sys-ram">&mdash;</span>
         </div>
-        <span class="sys-value" id="sys-ram">&mdash;</span>
+        <div class="sys-bar"><span class="sys-bar-fill" id="sys-ram-bar"></span></div>
       </div>
       <div class="sys-stat">
-        <span class="sys-label">Disk</span>
-        <div class="sys-bar">
-          <div class="sys-bar-fill" id="sys-disk-bar"></div>
+        <div class="sys-head">
+          <span class="lbl">Disk</span>
+          <span class="sys-value" id="sys-disk">&mdash;</span>
         </div>
-        <span class="sys-value" id="sys-disk">&mdash;</span>
+        <div class="sys-bar"><span class="sys-bar-fill" id="sys-disk-bar"></span></div>
       </div>
-      <button class="settings-btn" id="privacy-toggle-btn" onclick="togglePrivacy()" title="Hide sensitive info">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="privacy-icon-visible">
+    </div>
+
+    <div class="tools">
+      <button class="tool-btn tool-btn-text" id="setup-open" type="button">Setup</button>
+      <button class="tool-btn" id="privacy-toggle" type="button"
+              aria-pressed="false" aria-label="Hide connect addresses and passwords">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" aria-hidden="true" id="privacy-icon-visible">
           <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
           <circle cx="12" cy="12" r="3"></circle>
         </svg>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="privacy-icon-hidden" style="display:none">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" aria-hidden="true" id="privacy-icon-hidden" style="display:none">
           <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"></path>
           <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"></path>
           <line x1="1" y1="1" x2="23" y2="23"></line>
           <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"></path>
         </svg>
       </button>
-      <button class="settings-btn" onclick="openReorder()" title="Reorder servers">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <button class="tool-btn" id="reorder-open" type="button" aria-label="View options">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" aria-hidden="true">
           <line x1="8" y1="6" x2="21" y2="6"></line>
           <line x1="8" y1="12" x2="21" y2="12"></line>
           <line x1="8" y1="18" x2="21" y2="18"></line>
@@ -56,33 +77,44 @@
           <polyline points="5 16 3 18 5 20"></polyline>
         </svg>
       </button>
-      <button class="settings-btn" onclick="openSettings()" title="Settings">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="3"></circle>
-          <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path>
+      <!-- Discord mark, not a gear: this panel is entirely Discord webhook and
+           notification settings, and the previous sun-like glyph read as a
+           light/dark toggle. -->
+      <button class="tool-btn" id="settings-open" type="button"
+              aria-label="Discord notification settings">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M19.27 5.33A16.6 16.6 0 0 0 15.05 4c-.18.33-.4.77-.55 1.12a15.4 15.4 0 0 0-4.99 0C9.35 4.77 9.13 4.33 8.95 4a16.6 16.6 0 0 0-4.22 1.33C2.05 9.33 1.33 13.22 1.69 17.06A16.75 16.75 0 0 0 6.8 19.65c.41-.56.78-1.16 1.09-1.79-.6-.23-1.17-.5-1.71-.83.14-.1.28-.21.42-.32a11.95 11.95 0 0 0 10.8 0c.14.11.28.22.42.32-.54.32-1.11.6-1.71.83.31.63.68 1.23 1.09 1.79a16.7 16.7 0 0 0 5.11-2.59c.42-4.45-.72-8.3-3.04-11.73ZM8.52 14.72c-1.02 0-1.86-.94-1.86-2.09s.82-2.09 1.86-2.09 1.88.94 1.86 2.09c0 1.15-.82 2.09-1.86 2.09Zm6.87 0c-1.02 0-1.86-.94-1.86-2.09s.82-2.09 1.86-2.09 1.88.94 1.86 2.09c0 1.15-.81 2.09-1.86 2.09Z"/>
         </svg>
       </button>
     </div>
   </header>
 
-  <!-- Server cards grid -->
+  <!-- Shown when the Socket.IO link drops, so stale numbers are never presented
+       as live. -->
+  <div class="link-banner" id="link-banner" role="status">
+    <span>Link lost &mdash; reconnecting. Values below are stale.</span>
+  </div>
+
   <main class="server-grid" id="server-grid">
-    <!-- Cards are rendered dynamically by app.js -->
-    <div class="loading">Connecting to dashboard...</div>
+    <div class="grid-message">
+      <h2>Connecting</h2>
+      <p>Waiting for the dashboard service.</p>
+    </div>
   </main>
 
-  <!-- Event log section -->
   <section class="event-log-section" id="event-log-section">
-    <div class="event-log-header" onclick="toggleEventLog()">
-      <h2 class="event-log-title">Event Log</h2>
-      <span class="event-log-toggle" id="event-log-toggle">&#9660;</span>
-    </div>
+    <button class="event-log-header" id="event-log-toggle-btn" type="button"
+            aria-expanded="true" aria-controls="event-log-body">
+      Event Log
+      <span class="event-log-toggle" aria-hidden="true">&#9660;</span>
+    </button>
     <div class="event-log-body" id="event-log-body">
       <div class="event-log-filters">
-        <select id="event-filter-server" onchange="loadEvents()">
-          <option value="">All Servers</option>
+        <label class="sr-only" for="event-filter-server">Filter by server</label>
+        <select class="input" id="event-filter-server" style="width:auto; margin-top:0">
+          <option value="">All servers</option>
         </select>
-        <button class="event-refresh-btn" onclick="loadEvents()">Refresh</button>
+        <button class="btn btn-sm" id="event-refresh" type="button">Refresh</button>
       </div>
       <div class="event-log-list" id="event-log-list">
         <div class="event-empty">No events yet</div>
@@ -91,178 +123,430 @@
     </div>
   </section>
 
-  <!-- Settings modal -->
-  <div class="modal-overlay" id="settings-overlay" onclick="closeSettingsOverlay(event)">
-    <div class="modal" id="settings-modal">
+  <!-- === Consolidated server config. Replaces the separate schedule, backup,
+       and idle modals: they were three dialogs for one mental task. === -->
+  <div class="modal-overlay" id="config-overlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="config-title">
       <div class="modal-header">
-        <h2>Settings</h2>
-        <button class="modal-close" onclick="closeSettings()">&times;</button>
+        <h2 id="config-title">Configure</h2>
+        <span class="modal-subject" id="config-subject"></span>
+        <button class="modal-close" data-close type="button" aria-label="Close">&times;</button>
       </div>
       <div class="modal-body">
-        <div class="setting-group">
-          <label class="setting-label">Discord Webhook URL</label>
-          <input type="text" class="setting-input" id="setting-webhook-url" placeholder="https://discord.com/api/webhooks/...">
-          <span class="setting-hint">Paste your Discord webhook URL to receive notifications</span>
-        </div>
-        <div class="setting-group">
-          <label class="setting-label">
-            <input type="checkbox" id="setting-notifications-enabled" checked>
-            Enable Discord Notifications
-          </label>
-        </div>
-        <div class="setting-group" id="notify-categories">
-          <label class="setting-label">Notify me about</label>
-          <label class="setting-label"><input type="checkbox" data-category="status" checked> Server started / stopped</label>
-          <label class="setting-label"><input type="checkbox" data-category="crashes" checked> Crashes &amp; recovery</label>
-          <label class="setting-label"><input type="checkbox" data-category="restarts" checked> Scheduled restart warnings</label>
-          <label class="setting-label"><input type="checkbox" data-category="players" checked> Player joins &amp; leaves</label>
-          <label class="setting-label"><input type="checkbox" data-category="updates" checked> Game updates</label>
-          <label class="setting-label"><input type="checkbox" data-category="backups" checked> Backups</label>
-          <label class="setting-label"><input type="checkbox" data-category="idle" checked> Idle shutdowns</label>
-        </div>
-        <div class="setting-actions">
-          <button class="btn-secondary" onclick="testDiscord()">Test Webhook</button>
-          <button class="btn-primary" onclick="saveSettings()">Save Settings</button>
-        </div>
-      </div>
-    </div>
-  </div>
 
-  <!-- Schedule edit modal -->
-  <div class="modal-overlay" id="schedule-overlay" onclick="closeScheduleOverlay(event)">
-    <div class="modal" id="schedule-modal">
-      <div class="modal-header">
-        <h2>Edit Restart Schedule</h2>
-        <button class="modal-close" onclick="closeSchedule()">&times;</button>
-      </div>
-      <div class="modal-body">
-        <p class="schedule-server-name" id="schedule-server-name"></p>
-        <div class="setting-group">
-          <label class="setting-label">Schedule Preset</label>
-          <select class="setting-input" id="schedule-preset" onchange="onSchedulePresetChange()">
+        <div class="cfg-section">
+          <div class="cfg-head">
+            <span class="cfg-title">Power</span>
+            <span class="status-text" id="cfg-state">&mdash;</span>
+          </div>
+          <div class="cfg-actions">
+            <button class="btn btn-sm btn-go" id="cfg-start" type="button">Start</button>
+            <button class="btn btn-sm btn-halt" id="cfg-stop" type="button">Stop</button>
+            <button class="btn btn-sm" id="cfg-restart" type="button">Restart</button>
+          </div>
+          <div class="cfg-row">
+            <div>
+              <span class="cfg-row-label">Auto-recovery</span>
+              <span class="hint">Starts on boot, and restarts automatically after a crash.</span>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="cfg-autostart">
+              <span class="toggle-track"></span>
+              <span class="sr-only">Auto-recovery</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Hidden entirely when server images are switched off in View
+             Options: there is nothing to configure if nothing renders. -->
+        <div class="cfg-section" id="cfg-header-section">
+          <div class="cfg-head">
+            <span class="cfg-title">Header Image</span>
+            <button class="btn btn-sm" id="cfg-header-remove" type="button"
+                    style="display:none">Use A Default</button>
+          </div>
+          <div class="header-preview" id="cfg-header-preview">
+            <span class="header-preview-empty">No image</span>
+          </div>
+          <span class="lbl">Defaults</span>
+          <div class="preset-grid" id="cfg-preset-grid"></div>
+          <label class="btn btn-sm header-pick" for="cfg-header-file">Upload Custom&hellip;</label>
+          <input type="file" id="cfg-header-file" accept="image/png,image/jpeg,image/webp"
+                 class="sr-only">
+        </div>
+
+        <!-- Router config happens outside this machine, so the dashboard can
+             only track whether it's been done and nag until it has. -->
+        <div class="cfg-section" id="cfg-ports-section" tabindex="-1">
+          <div class="cfg-head">
+            <span class="cfg-title">Set Up Port Forwarding</span>
+          </div>
+          <p class="hint">
+            Until these ports are opened on your router, only people on your own
+            network can connect. You do this once per server.
+          </p>
+
+          <div class="port-callout">
+            <div class="port-callout-row">
+              <span class="lbl">Open these ports</span>
+              <span class="val" id="cfg-ports-value">&mdash;</span>
+            </div>
+            <div class="port-callout-row">
+              <span class="lbl">Forward them to</span>
+              <span class="val" id="cfg-lan-value">this machine</span>
+            </div>
+          </div>
+
+          <ol class="steps">
+            <li>Open your router's settings page in a browser &mdash; usually
+                <span class="val">192.168.1.1</span> or <span class="val">192.168.0.1</span>.</li>
+            <li>Sign in. The password is often printed on a sticker on the router itself.</li>
+            <li>Find <strong>Port Forwarding</strong>. Routers file it under
+                Advanced, NAT, Virtual Server, or Gaming.</li>
+            <li>Add one rule per port above. Set the internal <em>and</em> external
+                port to the same number, point it at the address above, and match
+                the protocol (UDP or TCP).</li>
+            <li>Save. Some routers restart themselves before the rules take effect.</li>
+          </ol>
+
+          <div class="cfg-row">
+            <div>
+              <span class="cfg-row-label">I've done this</span>
+              <span class="hint">Clears the Router Setup flag on this server's card.</span>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="cfg-ports-done">
+              <span class="toggle-track"></span>
+              <span class="sr-only">Port forwarding complete</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="cfg-section" id="cfg-version-section">
+          <div class="cfg-head">
+            <span class="cfg-title">Game Version</span>
+            <div style="display:flex; gap:8px">
+              <button class="btn btn-sm" id="cfg-check-btn" type="button">Check Now</button>
+              <button class="btn btn-sm btn-primary" id="cfg-update-btn" type="button"
+                      style="display:none">Install Update</button>
+            </div>
+          </div>
+          <p class="hint" id="cfg-version-text">&mdash;</p>
+          <a class="link" id="cfg-update-link" href="#" target="_blank" rel="noopener"
+             style="display:none; font-size:14px">Where to get updates &rarr;</a>
+        </div>
+
+        <div class="cfg-section">
+          <div class="cfg-head">
+            <span class="cfg-title">Scheduled Restart</span>
+          </div>
+          <label class="lbl" for="cfg-schedule-preset">Frequency</label>
+          <select class="input" id="cfg-schedule-preset">
             <option value="">Disabled</option>
             <option value="0 4 * * *">Daily at 4:00 AM</option>
             <option value="0 6 * * *">Daily at 6:00 AM</option>
-            <option value="0 */12 * * *">Every 12 Hours</option>
-            <option value="0 */6 * * *">Every 6 Hours</option>
-            <option value="custom">Custom Cron</option>
+            <option value="0 */12 * * *">Every 12 hours</option>
+            <option value="0 */6 * * *">Every 6 hours</option>
+            <option value="custom">Custom cron&hellip;</option>
           </select>
+          <div class="field" id="cfg-schedule-custom" style="display:none">
+            <label class="lbl" for="cfg-schedule-cron">Cron expression</label>
+            <input type="text" class="input" id="cfg-schedule-cron" placeholder="0 4 * * *">
+            <span class="hint">minute hour day month weekday</span>
+          </div>
+          <span class="hint">A scheduled restart never starts a stopped server.</span>
         </div>
-        <div class="setting-group" id="custom-cron-group" style="display:none">
-          <label class="setting-label">Custom Cron Expression</label>
-          <input type="text" class="setting-input" id="schedule-cron-input" placeholder="0 4 * * *">
-          <span class="setting-hint">Format: minute hour day month weekday</span>
-        </div>
-        <div class="setting-actions">
-          <button class="btn-secondary" onclick="closeSchedule()">Cancel</button>
-          <button class="btn-primary" onclick="saveSchedule()">Save Schedule</button>
-        </div>
-      </div>
-    </div>
-  </div>
 
-  <!-- Backup management modal -->
-  <div class="modal-overlay" id="backup-overlay" onclick="closeBackupOverlay(event)">
-    <div class="modal" id="backup-modal">
-      <div class="modal-header">
-        <h2>Backup Settings</h2>
-        <button class="modal-close" onclick="closeBackup()">&times;</button>
-      </div>
-      <div class="modal-body">
-        <p class="schedule-server-name" id="backup-server-name"></p>
-        <div class="setting-group" style="display:flex; align-items:center; justify-content:space-between;">
-          <span class="setting-label" style="margin-bottom:0;">Enable Automatic Backups</span>
-          <label class="toggle-switch">
-            <input type="checkbox" id="backup-enabled">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <div class="setting-group">
-          <label class="setting-label">Backup Frequency</label>
-          <select class="setting-input" id="backup-preset" onchange="onBackupPresetChange()">
-            <option value="">Select frequency...</option>
+        <div class="cfg-section">
+          <div class="cfg-head">
+            <span class="cfg-title">Automatic Backups</span>
+            <label class="toggle">
+              <input type="checkbox" id="cfg-backup-enabled">
+              <span class="toggle-track"></span>
+              <span class="sr-only">Enable automatic backups</span>
+            </label>
+          </div>
+          <label class="lbl" for="cfg-backup-preset">Frequency</label>
+          <select class="input" id="cfg-backup-preset">
+            <option value="">Select&hellip;</option>
             <option value="0 4 * * *">Daily at 4:00 AM</option>
             <option value="0 6 * * *">Daily at 6:00 AM</option>
-            <option value="0 */12 * * *">Every 12 Hours</option>
-            <option value="0 */6 * * *">Every 6 Hours</option>
-            <option value="custom">Custom Cron</option>
+            <option value="0 */12 * * *">Every 12 hours</option>
+            <option value="0 */6 * * *">Every 6 hours</option>
+            <option value="custom">Custom cron&hellip;</option>
           </select>
+          <div class="field" id="cfg-backup-custom" style="display:none">
+            <label class="lbl" for="cfg-backup-cron">Cron expression</label>
+            <input type="text" class="input" id="cfg-backup-cron" placeholder="0 4 * * *">
+          </div>
+          <div class="field">
+            <label class="lbl" for="cfg-backup-retention">Retention</label>
+            <select class="input" id="cfg-backup-retention">
+              <option value="3">Keep last 3</option>
+              <option value="5" selected>Keep last 5</option>
+              <option value="10">Keep last 10</option>
+              <option value="20">Keep last 20</option>
+            </select>
+          </div>
+          <div class="cfg-head" style="margin-top:10px; margin-bottom:0">
+            <span class="lbl">Recent backups</span>
+            <button class="btn btn-sm" id="cfg-backup-now" type="button">Back Up Now</button>
+          </div>
+          <div class="backup-list" id="cfg-backup-list"></div>
         </div>
-        <div class="setting-group" id="backup-custom-cron-group" style="display:none">
-          <label class="setting-label">Custom Cron Expression</label>
-          <input type="text" class="setting-input" id="backup-cron-input" placeholder="0 4 * * *">
-          <span class="setting-hint">Format: minute hour day month weekday</span>
-        </div>
-        <div class="setting-group">
-          <label class="setting-label">Retention</label>
-          <select class="setting-input" id="backup-retention">
-            <option value="3">Keep last 3 backups</option>
-            <option value="5" selected>Keep last 5 backups</option>
-            <option value="10">Keep last 10 backups</option>
-            <option value="20">Keep last 20 backups</option>
-          </select>
-        </div>
-        <div class="setting-actions">
-          <button class="btn-secondary" onclick="triggerBackupNow()">Backup Now</button>
-          <button class="btn-primary" onclick="saveBackupConfig()">Save Settings</button>
-        </div>
-        <div class="setting-group" id="backup-list-group" style="display:none">
-          <label class="setting-label">Recent Backups</label>
-          <div class="backup-list" id="backup-list"></div>
-        </div>
-      </div>
-    </div>
-  </div>
 
-  <!-- Reorder servers modal -->
-  <div class="modal-overlay" id="reorder-overlay" onclick="closeReorderOverlay(event)">
-    <div class="modal" id="reorder-modal">
-      <div class="modal-header">
-        <h2>Reorder Servers</h2>
-        <button class="modal-close" onclick="closeReorder()">&times;</button>
-      </div>
-      <div class="modal-body">
-        <p class="setting-hint" style="margin-bottom: 12px;">Drag to reorder, or use the arrows. The order applies to the dashboard and Discord.</p>
-        <div class="reorder-list" id="reorder-list"></div>
-        <div class="setting-actions">
-          <button class="btn-secondary" onclick="closeReorder()">Cancel</button>
-          <button class="btn-primary" onclick="saveReorder()">Save Order</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Idle shutdown modal -->
-  <div class="modal-overlay" id="idle-overlay" onclick="closeIdleOverlay(event)">
-    <div class="modal" id="idle-modal">
-      <div class="modal-header">
-        <h2>Idle Shutdown</h2>
-        <button class="modal-close" onclick="closeIdle()">&times;</button>
-      </div>
-      <div class="modal-body">
-        <p class="schedule-server-name" id="idle-server-name"></p>
-        <div class="setting-group">
-          <label class="setting-label">Shut down after no players for</label>
-          <select class="setting-input" id="idle-hours">
-            <option value="0">Never (always stay on)</option>
+        <div class="cfg-section">
+          <div class="cfg-head">
+            <span class="cfg-title">Auto-Off When Empty</span>
+          </div>
+          <label class="lbl" for="cfg-idle-hours">Shut down after no players for</label>
+          <select class="input" id="cfg-idle-hours">
+            <option value="0">Never &mdash; always stay on</option>
             <option value="6">6 hours</option>
             <option value="12">12 hours</option>
             <option value="24">24 hours</option>
             <option value="48">2 days</option>
             <option value="168">7 days</option>
           </select>
-          <span class="setting-hint">The server turns itself off after being empty this long. Anyone can turn it back on with /start in Discord.</span>
+          <span class="hint">Anyone can wake it again with /start in Discord.</span>
         </div>
-        <div class="setting-actions">
-          <button class="btn-secondary" onclick="closeIdle()">Cancel</button>
-          <button class="btn-primary" onclick="saveIdleConfig()">Save</button>
-        </div>
+
+      </div>
+      <div class="modal-actions">
+        <button class="btn" data-close type="button">Cancel</button>
+        <button class="btn btn-primary" id="cfg-save" type="button">Save</button>
       </div>
     </div>
   </div>
 
-  <!-- Toast notifications -->
-  <div class="toast-container" id="toast-container"></div>
+  <!-- === Setup === -->
+  <!-- The install and per-game setup steps need elevation and a Windows box, so
+       the dashboard can't perform them. What it can do is hand the user prompts
+       that brief a coding agent correctly — including the constraint that the
+       agent must surface elevated commands rather than try to run them. -->
+  <div class="modal-overlay" id="setup-overlay">
+    <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="setup-title">
+      <div class="modal-header">
+        <h2 id="setup-title">Setup</h2>
+        <button class="modal-close" data-close type="button" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="hint" style="margin-bottom:16px">
+          This dashboard drives real Windows services, and the setup steps need
+          administrator rights. The fastest route is to hand the prompts below to
+          a coding agent &mdash; Claude Code, Cursor, Copilot &mdash; opened in this
+          repository. The repo's docs are written to be followed by one.
+        </p>
+
+        <div class="cfg-section">
+          <div class="cfg-head">
+            <span class="cfg-title">Before you start</span>
+          </div>
+          <ul class="steps">
+            <li>Windows 10 or 11, with an account that can run things as administrator.</li>
+            <li><a class="link" href="https://nodejs.org" target="_blank" rel="noopener">Node.js</a> 18 or newer.</li>
+            <li><a class="link" href="https://nssm.cc/download" target="_blank" rel="noopener">NSSM</a> &mdash; runs each game server as a Windows service.</li>
+            <li><a class="link" href="https://developer.valvesoftware.com/wiki/SteamCMD" target="_blank" rel="noopener">SteamCMD</a> &mdash; only for Steam-based games.</li>
+          </ul>
+        </div>
+
+        <div class="cfg-section">
+          <div class="cfg-head">
+            <span class="cfg-title">First &mdash; install and configure</span>
+            <button class="btn btn-sm" data-copy-target="prompt-install" type="button">Copy</button>
+          </div>
+          <p class="hint">Run once, on the machine that will host the servers.</p>
+          <pre class="prompt" id="prompt-install">Read AGENTS.md and docs/SETUP.md in this repository, then set this dashboard up on my Windows machine.
+
+Check which prerequisites I'm missing (Node 18+, NSSM, SteamCMD) and tell me how to install them. Create config.json from config.example.json and fill in my LAN address, public address, and the paths to nssm.exe and steamcmd.exe.
+
+Registering Windows services and adding firewall rules needs elevation, and the dashboard runs unelevated. Do not try to run those yourself — give me the exact commands and I'll run them in an admin terminal.</pre>
+        </div>
+
+        <div class="cfg-section">
+          <div class="cfg-head">
+            <span class="cfg-title">Then &mdash; add a game server</span>
+            <button class="btn btn-sm" data-copy-target="prompt-add" type="button">Copy</button>
+          </div>
+          <p class="hint">Replace the game name. Repeat for each game you want to host.</p>
+          <pre class="prompt" id="prompt-add">Read docs/ADDING_GAMES.md and AGENTS.md, then add a VALHEIM server to this dashboard.
+
+Install the server files, register it as a Windows service with NSSM, and add its entry to the servers array in config.json — including the correct processName (for Unreal games this is the *-Win64-Shipping-Cmd.exe process, not the launcher), queryPort, queryProtocol, and ports.
+
+Give me any elevated commands to run myself rather than running them for me. When you're done, tell me which ports I need to forward on my router.</pre>
+        </div>
+
+        <div class="cfg-section">
+          <div class="cfg-head">
+            <span class="cfg-title">If something breaks</span>
+            <button class="btn btn-sm" data-copy-target="prompt-fix" type="button">Copy</button>
+          </div>
+          <p class="hint">Describe the symptom where indicated.</p>
+          <pre class="prompt" id="prompt-fix">Read docs/TROUBLESHOOTING.md and AGENTS.md in this repository.
+
+Problem: DESCRIBE WHAT'S HAPPENING HERE.
+
+Diagnose it against the known failure modes in the docs first. This manages live game servers that people may be playing on, so verify against a stopped server before changing anything that's running, and tell me what you're going to do before you do it.</pre>
+        </div>
+
+        <div class="cfg-section">
+          <div class="cfg-head">
+            <span class="cfg-title">Reference</span>
+          </div>
+          <ul class="steps">
+            <li><span class="val">docs/SETUP.md</span> &mdash; first install, config reference, running as a service</li>
+            <li><span class="val">docs/ADDING_GAMES.md</span> &mdash; per-game reference values</li>
+            <li><span class="val">docs/TROUBLESHOOTING.md</span> &mdash; known failure modes</li>
+            <li><span class="val">AGENTS.md</span> &mdash; architecture and the invariants that must not be broken</li>
+          </ul>
+          <p class="hint" style="margin-top:10px">
+            This dashboard has <strong>no authentication</strong>. Keep it on your LAN.
+            Don't port forward port 8080 itself &mdash; use Tailscale, WireGuard, or a
+            Cloudflare Tunnel to reach it from outside.
+          </p>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" data-close type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- === Settings === -->
+  <div class="modal-overlay" id="settings-overlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div class="modal-header">
+        <h2 id="settings-title">Settings</h2>
+        <button class="modal-close" data-close type="button" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label class="lbl" for="setting-webhook-url">Discord webhook URL</label>
+          <input type="text" class="input" id="setting-webhook-url"
+                 placeholder="https://discord.com/api/webhooks/...">
+        </div>
+        <div class="field">
+          <label class="check">
+            <input type="checkbox" id="setting-notifications-enabled" checked>
+            Enable Discord notifications
+          </label>
+        </div>
+        <div class="field" id="notify-categories">
+          <span class="lbl">Notify me about</span>
+          <div style="margin-top:8px">
+            <label class="check"><input type="checkbox" data-category="status" checked> Server started / stopped</label>
+            <label class="check"><input type="checkbox" data-category="crashes" checked> Crashes &amp; recovery</label>
+            <label class="check"><input type="checkbox" data-category="restarts" checked> Scheduled restart warnings</label>
+            <label class="check"><input type="checkbox" data-category="players" checked> Player joins &amp; leaves</label>
+            <label class="check"><input type="checkbox" data-category="updates" checked> Game updates</label>
+            <label class="check"><input type="checkbox" data-category="backups" checked> Backups</label>
+            <label class="check"><input type="checkbox" data-category="idle" checked> Idle shutdowns</label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="settings-test" type="button">Test Webhook</button>
+        <button class="btn btn-primary" id="settings-save" type="button">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- === Reorder === -->
+  <div class="modal-overlay" id="reorder-overlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="reorder-title">
+      <div class="modal-header">
+        <h2 id="reorder-title">View Options</h2>
+        <button class="modal-close" data-close type="button" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+
+        <div class="cfg-section">
+          <div class="cfg-row" style="border-top:none; padding-top:0">
+            <div>
+              <span class="cfg-row-label">Server images</span>
+              <span class="hint">
+                Show a banner across the top of every card. Each server gets a
+                default until you give it its own.
+              </span>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="view-show-images">
+              <span class="toggle-track"></span>
+              <span class="sr-only">Show server images</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="cfg-section">
+          <div class="cfg-head">
+            <span class="cfg-title">Order</span>
+          </div>
+          <p class="hint" style="margin-bottom:12px">
+            Drag, or use the arrows. This order applies to the dashboard and to Discord.
+          </p>
+          <div class="reorder-list" id="reorder-list"></div>
+        </div>
+
+      </div>
+      <div class="modal-actions">
+        <button class="btn" data-close type="button">Cancel</button>
+        <button class="btn btn-primary" id="reorder-save" type="button">Save Order</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- === Cropper ===
+       Hand-rolled: there's no build step, so no library. The frame is fixed at
+       the card's 2.5:1 header aspect and the image moves behind it, which is
+       the only interaction model that can't produce a wrongly-shaped result. -->
+  <div class="modal-overlay" id="crop-overlay">
+    <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="crop-title">
+      <div class="modal-header">
+        <h2 id="crop-title">Position Image</h2>
+        <button class="modal-close" data-close type="button" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="hint" style="margin-bottom:12px">
+          Drag to reposition. Everything inside the frame becomes the card header.
+        </p>
+        <div class="crop-frame" id="crop-frame">
+          <!-- Transparent 1x1 placeholder. Without a src attribute this would
+               render as a broken-image box if ever shown before a file has
+               been chosen; JS swaps in the real picture on open. -->
+          <img id="crop-image" alt="" draggable="false"
+               src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">
+        </div>
+        <div class="crop-controls">
+          <label class="lbl" for="crop-zoom">Zoom</label>
+          <input type="range" id="crop-zoom" min="100" max="300" value="100" step="1">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" data-close type="button">Cancel</button>
+        <button class="btn btn-primary" id="crop-apply" type="button">Use Image</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- === Confirm. Replaces window.confirm(), which ignored the design entirely. -->
+  <div class="modal-overlay" id="confirm-overlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title"
+         style="max-width:400px">
+      <div class="modal-header">
+        <h2 id="confirm-title">Confirm</h2>
+        <button class="modal-close" data-close type="button" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="confirm-message" style="font-size:14px; color:var(--ink-dim)"></p>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" data-close type="button">Cancel</button>
+        <button class="btn btn-primary" id="confirm-ok" type="button">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toast-container" role="status" aria-live="polite"></div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/app.js"></script>

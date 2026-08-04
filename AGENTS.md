@@ -21,6 +21,8 @@ code over defensive abstraction.
 - discord.js v14 — slash commands
 - gamedig — A2S and Bedrock player queries
 - Frontend: vanilla HTML/CSS/JS, no framework, no build step
+- Self-hosted woff2 (Barlow Condensed, IBM Plex Mono) — no CDN request, so the
+  UI renders correctly on a LAN with no internet access
 
 ## Layout
 
@@ -28,6 +30,8 @@ code over defensive abstraction.
 server.js                    Entry point: poll loops, Socket.IO, service init
 config.json                  Machine config (gitignored)
 config.example.json          Template
+ART-DIRECTION.md             Binding visual spec — read before touching the UI
+demo/server.js               Cross-platform demo harness (npm run demo)
 src/
   routes/api.js              All REST endpoints
   db/database.js             SQLite schema + every query in the app
@@ -45,8 +49,14 @@ src/
   utils/
     config.js                Config loading + accessors
     powershell.js            PowerShell/NSSM exec helpers
-public/                      Frontend (index.html, css/, js/)
+public/                      Frontend (index.html, css/, js/, fonts/)
 ```
+
+**`.gitignore` note:** the SQLite data directory is ignored as `/db/` with a
+leading slash. A bare `db/` matches at any depth and silently excludes
+`src/db/`, which is source code — that happened once and shipped a repo that
+could not start, because all ten modules that import `../db/database.js` failed
+to resolve.
 
 ## How data flows
 
@@ -125,6 +135,39 @@ scale; revisit if it sprawls.
 
 `getSetting`/`setSetting` are synchronous and cheap — call them freely.
 
+## API surface
+
+All under `/api`. Everything the frontend needs is in the 10s Socket.IO
+`serverUpdate` payload; these are for actions and for data too heavy or too
+rarely-read to poll.
+
+| Route | Notes |
+|---|---|
+| `GET /servers` · `GET /servers/:id` | Snapshot; the socket payload is richer |
+| `PUT /servers/order` | Writes config.json — also drives Discord's pickers |
+| `POST /servers/:id/start` · `/stop` · `/restart` | Must call `trackAction()` — see invariants |
+| `POST /servers/:id/toggle` | **Sets start type AND stops the server.** A kill switch, not a settings toggle |
+| `PUT /servers/:id/autostart` | Start type only. This is what a settings UI should call |
+| `POST /servers/:id/check-update` | On-demand SteamCMD check. Heavyweight: spawns a process |
+| `POST /servers/:id/update` | Responds immediately; update runs in background, progress via `updateStatus` |
+| `GET`/`PUT /servers/:id/schedule` · `/backup` · `/idle` | Per-server settings |
+| `POST /servers/:id/backup/now` | Manual backup |
+| `GET`/`PUT /servers/:id/port-forward` | Tracks whether the user has done router config |
+| `POST`/`DELETE /servers/:id/header` | Custom header image; writes `public/uploads/<id>.jpg` |
+| `PUT /servers/:id/header-preset` | One of the bundled banners |
+| `GET`/`PUT /settings` · `POST /settings/test-discord` | Discord config + the global image view option |
+| `GET /events` | Paginated event log |
+| `GET /branding` | `dashboardName` and `lanAddress` |
+
+**`/toggle` vs `/autostart` is the trap.** They look interchangeable and are not.
+`/toggle` with `enabled:false` stops the running server as a side effect. Use
+`/autostart` for anything presented to the user as a preference.
+
+**The start type does double duty.** It controls whether the service starts on
+boot *and* whether `crashDetector` is allowed to auto-restart it (it skips
+servers set to manual). They cannot be configured independently, so the UI
+presents them as one control called Auto-recovery.
+
 ## Adding things
 
 **A player query protocol** — add a `case` to the switch in `playerQuery.js`, write
@@ -137,13 +180,73 @@ Document it in docs/ADDING_GAMES.md.
 
 **A per-server setting** — follow the idle-shutdown pattern: store as
 `key:serverId` in settings, add GET/PUT endpoints in api.js, surface it in
-`pollAndEmit`'s payload, add a card row + modal in the frontend.
+`pollAndEmit`'s payload, then add a `.cfg-section` to the consolidated config
+panel in index.html and load/save it in `openConfig()` / the `cfg-save` handler.
 
-**A frontend card row** — the schedule/backup/idle rows are the template. There's no
-build step; edit `public/js/app.js` directly and hard-refresh (Ctrl+Shift+R).
+**A card element** — there's no build step; edit `public/js/app.js` directly and
+hard-refresh (Ctrl+Shift+R). Add the node in `buildCard()`, store it in `refs`,
+and set its value in `updateCard()`.
+
+## Frontend invariants
+
+Two rules that will silently reintroduce fixed bugs if broken.
+
+**Never interpolate server-supplied strings into markup.** Cards are built as
+DOM nodes; values go in via `textContent` and `dataset`, handlers via delegated
+listeners. The previous build serialized values into HTML with an `esc()` helper
+that escaped `&<>` but *not* quotes, then dropped the result inside
+`onclick="copyText('…')"`. A password containing an apostrophe produced a
+syntactically invalid handler that threw on every click. There is no `esc()` any
+more; do not add one back.
+
+**Never rebuild the grid with `innerHTML`.** `renderServers()` reconciles against
+a `Map` of existing cards and mutates in place. The status poll (10s) and player
+poll (30s) both call it, so a full teardown discards hover, focus, text
+selection and scroll position four times a minute.
+
+**Config summary chips are derived, not stored.** `updateSummary()` reads
+`server.schedule`, `server.backup`, `server.idleShutdown` and `server.version`
+straight off the poll payload. After a successful save, mutate `cachedServers`
+optimistically and re-render so the card doesn't wait a poll cycle.
+
+**The card shows state; Configure owns settings.** A chip appears when something
+needs *doing* (amber, clickable, deep-links to the fix) or when a standing
+arrangement is worth a glance. A setting that is simply on and needs nothing from
+the user does not get a chip. An earlier build put "won't auto-restart after a
+crash" on the card and it was noise — that's a setting, not a status.
+
+**`prefers-reduced-motion` is honoured, and motion is exceptional.** Only two
+things loop: the amber action-chip pulse and the border sweep on a server that is
+mid-action. Both are declared as exceptions in `design-check` with a reason.
+
+## Tooling
+
+Both scripts are **zero-dependency by design** — the Windows host has nothing
+installed but Node.
+
+```bash
+npm run design-check   # 16 rules derived from ART-DIRECTION.md; fails the build
+npm run screenshots    # captures 15 UI states at 2x into screenshots/
+```
+
+`design-check` is the one to run after any UI change. A deliberate exception is
+declared inline on the offending line and is reprinted on every run:
+
+```css
+/* design-check: allow no-loop-motion — reason goes here */
+```
+
+**If a rule is wrong, change the rule *and* the matching section of
+ART-DIRECTION.md in the same commit.** A checker that contradicts the spec trains
+you to ignore its output.
 
 ## Conventions
 
+- **UI changes obey [ART-DIRECTION.md](ART-DIRECTION.md).** It is a binding spec,
+  not a mood board: three semantic hues, no `box-shadow`, no looping animation
+  (this dashboard lives on a second monitor), 2px corners, Barlow for human text
+  and IBM Plex Mono for machine values. It ends with an anti-default checklist to
+  run before calling any UI done.
 - Comments explain *why*, not *what*. Existing comments flag non-obvious constraints
   (UTF-16 output, ownership races, sort direction) — keep that bar.
 - Services fail soft: log and return `null`/`false` rather than throwing into the
@@ -165,3 +268,21 @@ curl http://localhost:8080/api/servers    # endpoint responds
 
 Then restart the dashboard and watch its log. Because this manages live game servers,
 prefer verifying against a stopped server first.
+
+**Frontend work — use the demo harness.** The production app is Windows-only: it
+drives NSSM through PowerShell and cannot run on macOS or Linux.
+
+```bash
+npm run demo     # http://localhost:8080
+```
+
+`demo/server.js` fakes only the platform layer — service status, process stats,
+player queries. The event log, settings, schedules and backup configs all go
+through the real `src/db/database.js`, so those paths are genuinely exercised.
+Its synthetic fleet deliberately covers every card state: running with players,
+running but empty, stopped, update-available, a server whose player query fails
+(`null`, which must render `—/N` and never `0/N`), and a password containing an
+apostrophe.
+
+The demo's Socket.IO payloads mirror `pollAndEmit()` in server.js. **If you
+change that payload, change the demo too** or the two drift apart.

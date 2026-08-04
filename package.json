@@ -5,7 +5,10 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "demo": "node demo/server.js",
+    "design-check": "node scripts/design-check.js",
+    "screenshots": "node scripts/screenshots.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^12.6.2",

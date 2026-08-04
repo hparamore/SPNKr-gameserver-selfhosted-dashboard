@@ -2,8 +2,10 @@
 # Copy config.example.json to config.json and edit it.
 config.json
 
-# SQLite database (event log, schedules, settings, Discord bot token)
-db/
+# SQLite database (event log, schedules, settings, Discord bot token).
+# Leading slash matters: a bare "db/" matches at any depth and would also
+# exclude src/db/, which is source code.
+/db/
 *.db
 *.db-shm
 *.db-wal
@@ -20,3 +22,10 @@ Thumbs.db
 .DS_Store
 .vscode/
 .idea/
+
+# Uploaded header images — user content, not source.
+/public/uploads/
+
+# Transient browser profile from the screenshot script (belt and braces —
+# the script now writes it to the system temp dir).
+screenshots/.chrome-profile/

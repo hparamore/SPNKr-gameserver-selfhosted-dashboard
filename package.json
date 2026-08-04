@@ -1,6 +1,6 @@
 {
   "name": "game-server-dashboard",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Self-hosted web dashboard for managing game servers running as Windows services",
   "type": "module",
   "main": "server.js",

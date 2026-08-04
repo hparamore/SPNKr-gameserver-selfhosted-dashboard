@@ -193,7 +193,9 @@ to do — the dashboard walks you through that.
 |---|---|
 | [docs/SETUP.md](docs/SETUP.md) | First install, config reference, running as a service, Discord setup |
 | [docs/ADDING_GAMES.md](docs/ADDING_GAMES.md) | Adding a game server end to end, with per-game reference values |
+| [docs/UPGRADING.md](docs/UPGRADING.md) | Pulling updates onto a machine that's already running servers |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Known failure modes and their fixes |
+| [CHANGELOG.md](CHANGELOG.md) | What changed in each version |
 | [AGENTS.md](AGENTS.md) | Architecture and the invariants that break silently |
 | [ART-DIRECTION.md](ART-DIRECTION.md) | The binding visual spec for any UI change |
 | [PRODUCT.md](PRODUCT.md) | Who this is for and why it exists |

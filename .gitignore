@@ -25,3 +25,7 @@ Thumbs.db
 
 # Uploaded header images — user content, not source.
 /public/uploads/
+
+# Transient browser profile from the screenshot script (belt and braces —
+# the script now writes it to the system temp dir).
+screenshots/.chrome-profile/

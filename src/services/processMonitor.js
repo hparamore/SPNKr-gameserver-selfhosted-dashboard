@@ -96,7 +96,7 @@ export async function getSystemStats() {
         totalGB,
         usedGB,
         percent,
-        formatted: `${usedGB} / ${totalGB} GB`
+        formatted: formatCapacity(usedGB, totalGB)
       };
     } catch (e) {
       console.error('Failed to parse RAM stats:', e.message);
@@ -120,7 +120,7 @@ export async function getSystemStats() {
         usedGB,
         freeGB,
         percent,
-        formatted: `${usedGB} / ${totalGB} GB`
+        formatted: formatCapacity(usedGB, totalGB)
       };
     } catch (e) {
       console.error('Failed to parse disk stats:', e.message);
@@ -131,6 +131,23 @@ export async function getSystemStats() {
 }
 
 // --- Formatting helpers ---
+
+/**
+ * "used / total" for a capacity readout, switching to TB past 1000 GB.
+ *
+ * A 2TB disk rendered in gigabytes reads "799.1 / 1862.1 GB" — 17 characters of
+ * which the last three digits are noise, and wide enough to overflow the stat
+ * slot on a narrow phone (the value carries white-space: nowrap, because a
+ * capacity must never break across two lines). "0.8 / 1.8 TB" says the same
+ * thing in 12.
+ */
+function formatCapacity(usedGB, totalGB) {
+  if (totalGB >= 1000) {
+    const round = gb => Math.round(gb / 1024 * 10) / 10;
+    return `${round(usedGB)} / ${round(totalGB)} TB`;
+  }
+  return `${usedGB} / ${totalGB} GB`;
+}
 
 function formatRAM(bytes) {
   if (bytes >= 1024 * 1024 * 1024) {

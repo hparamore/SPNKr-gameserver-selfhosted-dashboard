@@ -400,7 +400,16 @@ router.get('/servers/:id/players', async (req, res) => {
     }
 
     const playerData = await queryPlayers(server);
-    res.json(playerData || { playerCount: 0, maxPlayers: server.maxPlayers, players: [] });
+
+    // queryPlayers returns null when the query failed — "unknown", not "empty".
+    // Reporting 0 here would tell a caller a populated server is deserted; the
+    // Socket.IO poll loop keeps the distinction, so this must too.
+    res.json(playerData || {
+      playerCount: null,
+      maxPlayers: server.maxPlayers,
+      players: [],
+      queryFailed: true
+    });
   } catch (error) {
     console.error(`Error querying players for ${req.params.id}:`, error);
     res.status(500).json({ error: 'Failed to query players' });

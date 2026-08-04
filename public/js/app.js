@@ -444,7 +444,10 @@ function updateSummary(node, server) {
   }
 
   if (server.idleShutdown) {
-    run.append(chip(`Idle ${formatIdleHours(server.idleShutdown)}`, 'on'));
+    // "Idle 24h" never said what happens once it goes idle. "Auto-Off" does,
+    // and pairs with the Auto-recovery toggle in Configure: one stops the
+    // server, the other starts it.
+    run.append(chip(`Auto-Off ${formatIdleHours(server.idleShutdown)}`, 'on'));
   }
 
   if (!fixed.children.length && !run.children.length) {
@@ -1610,11 +1613,10 @@ function cronToHuman(expr) {
   return expr;
 }
 
+// Days are spelled out. Chips are uppercased by CSS, which turned "2d" into
+// "2D" — and a bare D reads as nothing. "24h" survives uppercasing fine.
 function formatIdleHours(hours) {
-  if (hours >= 24 && hours % 24 === 0) {
-    const days = hours / 24;
-    return days === 1 ? '24h' : `${days}d`;
-  }
+  if (hours >= 48 && hours % 24 === 0) return `${hours / 24} days`;
   return `${hours}h`;
 }
 

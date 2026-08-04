@@ -2,6 +2,26 @@
 
 Notable changes to this project. Dates are when the change reached `main`.
 
+## 1.1.2 — 2026-08-04
+
+### Fixed
+
+- **Server cards overflowed the viewport on phones.** A grid item defaults to
+  `min-width: auto`, so the track could not shrink below the card's min-content
+  width — about 470px, set by the chip row. On a 430px phone that pushed the grid
+  51px past the viewport, scrolled the whole page sideways, and dragged the
+  header out of alignment with it. The card was already built to survive being
+  narrow (`.chip-track` clips under a mask fade); it just was never allowed to
+  get there. `min-width: 0` lets it.
+
+  Verified with zero overflow at 320, 360, 375, and 430 CSS px.
+
+- **Capacity readouts switch to TB past 1000 GB.** A 2TB disk rendered as
+  `799.1 / 1862.1 GB` — seventeen characters, the last three digits noise, and
+  wide enough to overflow its slot at 320px, where the value carries
+  `white-space: nowrap` because a capacity must not break across two lines.
+  Now `0.8 / 1.8 TB`. RAM under 1000 GB is unchanged.
+
 ## 1.1.1 — 2026-08-04
 
 ### Fixed

@@ -283,6 +283,14 @@ body > * { position: relative; z-index: 1; }
   border: 2px solid var(--rule);
   border-radius: var(--radius);
   transition: border-color 100ms linear;
+
+  /* A grid item defaults to min-width:auto, so the track cannot shrink below
+     the card's min-content — about 470px, set by the chip row. On a phone that
+     pushed the grid wider than the viewport and scrolled the whole page
+     sideways, which also dragged the header out of alignment.
+     The card is built to survive being narrow: .chip-track clips under a mask.
+     This lets it. */
+  min-width: 0;
 }
 
 .server-card:hover { border-color: var(--rule-bright); }

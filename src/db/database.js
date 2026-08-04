@@ -11,7 +11,13 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // db/ sits at the project root, beside server.js — not inside src/.
 const DB_DIR = join(__dirname, '..', '..', 'db');
-const DB_PATH = join(DB_DIR, 'dashboard.db');
+
+// New installs use dashboard.db. Installs predating the rename keep their
+// existing spnkr.db — without this, pulling an update silently starts the
+// dashboard on an empty database and drops every schedule, backup config,
+// saved setting (including the Discord bot token) and the whole event log.
+const LEGACY_DB_PATH = join(DB_DIR, 'spnkr.db');
+const DB_PATH = existsSync(LEGACY_DB_PATH) ? LEGACY_DB_PATH : join(DB_DIR, 'dashboard.db');
 
 let db = null;
 
@@ -48,7 +54,7 @@ export function init() {
     CREATE TABLE IF NOT EXISTS schedules (
       server_id       TEXT PRIMARY KEY,
       cron_expression TEXT,
-      warning_sent    INTEGER NOT NULL DEFAULT 0,
+      skip_if_players INTEGER NOT NULL DEFAULT 0,
       enabled         INTEGER NOT NULL DEFAULT 0
     );
 
@@ -142,17 +148,23 @@ export function getAllSchedules() {
   return conn().prepare(`SELECT * FROM schedules`).all();
 }
 
-export function setSchedule(serverId, cronExpression, warningSent, enabled) {
+/**
+ * The third parameter is skipIfPlayers — "don't restart while anyone is
+ * connected" — which is what scheduler.js passes. It is NOT a warning-sent
+ * flag: restart warnings are scheduled in memory by scheduler.js and never
+ * persisted.
+ */
+export function setSchedule(serverId, cronExpression, skipIfPlayers, enabled) {
   conn()
     .prepare(
-      `INSERT INTO schedules (server_id, cron_expression, warning_sent, enabled)
+      `INSERT INTO schedules (server_id, cron_expression, skip_if_players, enabled)
        VALUES (?, ?, ?, ?)
        ON CONFLICT(server_id) DO UPDATE SET
          cron_expression = excluded.cron_expression,
-         warning_sent    = excluded.warning_sent,
+         skip_if_players = excluded.skip_if_players,
          enabled         = excluded.enabled`
     )
-    .run(serverId, cronExpression ?? null, warningSent ? 1 : 0, enabled ? 1 : 0);
+    .run(serverId, cronExpression ?? null, skipIfPlayers ? 1 : 0, enabled ? 1 : 0);
 }
 
 // --- Backup configs ---

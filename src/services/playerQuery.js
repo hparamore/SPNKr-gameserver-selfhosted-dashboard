@@ -20,9 +20,9 @@ export async function queryPlayers(server) {
   try {
     switch (server.queryProtocol) {
       case 'a2s':
-        return await queryA2S(server.queryPort);
+        return await queryA2S(server.queryPort, server.queryGame);
       case 'bedrock-ping':
-        return await queryBedrockPing(server.queryPort);
+        return await queryBedrockPing(server.queryPort, server.queryGame);
       case 'satisfactory-api':
         return await querySatisfactoryAPI(server.queryPort);
       case 'palworld-api':
@@ -80,13 +80,23 @@ export function detectPlayerChanges(serverId, currentData, serverName, maxPlayer
 // --- Query Strategies ---
 
 /**
- * Steam A2S query (Valheim, Enshrouded).
- * Uses gamedig v5 with the 'valve' protocol type.
+ * Steam A2S query (Valheim, Enshrouded, and other Source-query games).
+ *
+ * gamedig v5 removed the generic 'valve' type that v4 accepted — passing it now
+ * throws "Invalid game: valve" and every query fails, which shows up on the card
+ * as a permanent "—/N". Each game needs its own type id ('valheim',
+ * 'enshrouded', ...), so the id comes from the server's `queryGame` config key.
+ * Run `node -e "console.log(Object.keys(require('gamedig').games))"` to list them.
  */
-async function queryA2S(port) {
+async function queryA2S(port, queryGame) {
+  if (!queryGame) {
+    console.error(`A2S query on port ${port}: no "queryGame" set in config.json — see docs/ADDING_GAMES.md`);
+    return null;
+  }
+
   try {
     const result = await GameDig.query({
-      type: 'valve',
+      type: queryGame,
       host: '127.0.0.1',
       port: port,
       socketTimeout: 3000
@@ -108,13 +118,14 @@ async function queryA2S(port) {
 }
 
 /**
- * Minecraft Bedrock ping (RakNet Unconnected Ping).
- * Uses gamedig v5 with the 'minecraftbe' protocol type.
+ * Minecraft ping. gamedig v5 dropped the separate 'minecraftbe' type — the
+ * single 'minecraft' type covers Bedrock and Java. Overridable per server via
+ * the `queryGame` config key.
  */
-async function queryBedrockPing(port) {
+async function queryBedrockPing(port, queryGame) {
   try {
     const result = await GameDig.query({
-      type: 'minecraftbe',
+      type: queryGame || 'minecraft',
       host: '127.0.0.1',
       port: port,
       socketTimeout: 3000

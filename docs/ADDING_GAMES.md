@@ -210,27 +210,61 @@ Then set up the extras from the card: **Scheduled Restarts**, **Automatic Backup
 
 Set `queryProtocol` and `queryPort` to match the game.
 
-| Protocol | Use for | Query port | Returns |
-|---|---|---|---|
-| `a2s` | Valheim, Enshrouded, most Source-engine-adjacent servers | usually game port + 1 | count, max, sometimes names |
-| `bedrock-ping` | Minecraft Bedrock | same as game port | count, max, MOTD |
-| `satisfactory-api` | Satisfactory | 7777 | count, max, session name |
-| `palworld-api` | Palworld | 8212 (REST API port) | count, max, player names |
-| `log-parse` | Core Keeper | game port | count via UDP endpoint count |
-| *(anything else)* | fallback | game port | rough count from UDP endpoints |
+| Protocol | Use for | Query port | Also needs | Returns |
+|---|---|---|---|---|
+| `a2s` | Valheim, Enshrouded, most Source-query games | usually game port + 1 | `queryGame` | count, max, sometimes names |
+| `bedrock-ping` | Minecraft (Bedrock and Java) | same as game port | — | count, max, MOTD |
+| `satisfactory-api` | Satisfactory | 7777 | — | count, max, session name |
+| `palworld-api` | Palworld | 8212 (REST API port) | `adminPassword` | count, max, player names |
+| `log-parse` | Core Keeper | game port | — | count via UDP endpoint count |
+| *(anything else)* | fallback | game port | — | rough count from UDP endpoints |
 
-`—/N` on a card means the query failed (server unreachable or protocol mismatch);
-`0/N` means it answered and nobody's on. The distinction is deliberate — don't
-"fix" a dash by assuming zero.
+`—/N` on a card means the query failed (server unreachable, or the game doesn't
+answer queries); `0/N` means it answered and nobody's on. The distinction is
+deliberate — don't "fix" a dash by assuming zero. Idle shutdown only acts on a
+confirmed `0`, so a server that reports `—` will never be auto-stopped.
 
-Two of these need extra config:
+### `queryGame` — required for `a2s`
 
-- **Satisfactory** requires auth. The dashboard handles it automatically:
-  passwordless login → bearer token → query, with the token cached and refreshed on
-  expiry. No config needed.
+gamedig v5 removed the generic `valve` type that v4 accepted. Every game now needs
+its own id, so `a2s` servers must set `queryGame`:
+
+```jsonc
+"queryProtocol": "a2s",
+"queryPort": 2457,
+"queryGame": "valheim"     // gamedig type id
+```
+
+List the valid ids with:
+
+```powershell
+node -e "console.log(Object.keys(require('gamedig').games).join('\n'))"
+```
+
+Common ones: `valheim`, `enshrouded`, `minecraft`, `rust`, `arkse`, `7d2d`.
+Omitting it logs a clear error and the card shows `—/N` rather than failing
+silently.
+
+### Games that don't answer queries at all
+
+Some servers only run a query responder when publicly listed. **Valheim started
+with `-public 0` does not respond to A2S on any port** — the ports are bound, but
+nothing answers, so the count stays `—/N` no matter how `queryGame` is set.
+Switching the start script to `-public 1` enables it (the server becomes visible
+in the browser; a password still gates joining). Verify with a raw probe:
+
+```powershell
+node -e "const d=require('dgram'),s=d.createSocket('udp4');s.on('message',m=>{console.log('responded',m.length,'bytes');process.exit()});setTimeout(()=>{console.log('no response');process.exit()},5000);s.send(Buffer.concat([Buffer.from([255,255,255,255,84]),Buffer.from('Source Engine Query\0')]),2457,'127.0.0.1')"
+```
+
+### Protocols needing extra setup
+
+- **Satisfactory** requires auth, handled automatically: passwordless login →
+  bearer token → query, with the token cached and refreshed on expiry.
 - **Palworld** needs its REST API enabled in `PalWorldSettings.ini`
-  (`RESTAPIEnabled=True`, `RESTAPIPort=8212`) and the admin password mirrored into the
-  server entry as `"adminPassword": "..."`. Keep the REST port **off** your router.
+  (`RESTAPIEnabled=True`, `RESTAPIPort=8212`) and the admin password mirrored into
+  the server entry as `"adminPassword": "..."`. Keep the REST port **off** your
+  router.
 
 Adding a protocol for a new game means a new `case` in
 `src/services/playerQuery.js` — see [AGENTS.md](../AGENTS.md).

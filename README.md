@@ -198,6 +198,8 @@ to do — the dashboard walks you through that.
 | [ART-DIRECTION.md](ART-DIRECTION.md) | The binding visual spec for any UI change |
 | [PRODUCT.md](PRODUCT.md) | Who this is for and why it exists |
 | [WORK_STATUS.md](WORK_STATUS.md) | Running log of work sessions |
+| [docs/CASE-STUDY.md](docs/CASE-STUDY.md) | Why this exists, what the redesign changed, what it turned up |
+| [screenshots/](screenshots/) | Captured UI states, including the pre-redesign build |
 
 ## Development
 

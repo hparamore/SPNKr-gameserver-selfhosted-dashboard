@@ -228,6 +228,54 @@ const SCENES = [
       await new Promise(r=>setTimeout(r,400));
     })()`,
     opts: { width: 414, height: 900, fullPage: true }
+  },
+
+  // --- Compact set: the same product with header images switched off. -------
+  // Worth capturing separately because this is the denser, more utilitarian
+  // reading of the dashboard, and the config panel genuinely differs.
+  {
+    name: '12-compact-configure',
+    note: 'Configure with images off — the Header Image section is removed entirely',
+    setup: `(async () => {
+      showServerImages = false; renderServers(cachedServers);
+      closeModal();
+      await openConfig('valheim'); await new Promise(r=>setTimeout(r,500));
+    })()`
+  },
+  {
+    name: '13-compact-states',
+    note: 'Compact view, servers mid-action',
+    setup: `(async () => {
+      closeModal();
+      showServerImages = false;
+      transitioning.set('palworld','running');
+      transitioning.set('satisfactory','stopped');
+      updating.add('enshrouded');
+      renderServers(cachedServers);
+      await new Promise(r=>setTimeout(r,700));
+    })()`,
+    opts: { fullPage: true }
+  },
+  {
+    name: '14-compact-mobile',
+    note: 'Compact view on a phone',
+    setup: `(async () => {
+      transitioning.clear(); updating.clear();
+      showServerImages = false; renderServers(cachedServers);
+      await new Promise(r=>setTimeout(r,400));
+    })()`,
+    opts: { width: 414, height: 900, fullPage: true }
+  },
+  {
+    name: '15-compact-event-log',
+    note: 'Event log — the audit trail behind every action',
+    setup: `(async () => {
+      showServerImages = false; renderServers(cachedServers);
+      await loadEvents();
+      await new Promise(r=>setTimeout(r,400));
+      document.getElementById('event-log-section').scrollIntoView({block:'end'});
+      await new Promise(r=>setTimeout(r,400));
+    })()`
   }
 ];
 

@@ -24,6 +24,10 @@ using Node's built-in WebSocket — no Puppeteer or Playwright install.
 | `09-link-lost.png` | Socket dropped — stale values flagged rather than silently shown |
 | `10-empty-state.png` | No servers configured yet |
 | `11-mobile.png` | Phone layout |
+| `12-compact-configure.png` | Configure with images off — the Header Image section is removed entirely |
+| `13-compact-states.png` | Compact view, servers mid-action |
+| `14-compact-mobile.png` | Compact view on a phone |
+| `15-compact-event-log.png` | Event log — the audit trail behind every action |
 
 ## Before / after
 

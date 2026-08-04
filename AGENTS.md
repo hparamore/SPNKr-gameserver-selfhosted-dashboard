@@ -135,6 +135,39 @@ scale; revisit if it sprawls.
 
 `getSetting`/`setSetting` are synchronous and cheap — call them freely.
 
+## API surface
+
+All under `/api`. Everything the frontend needs is in the 10s Socket.IO
+`serverUpdate` payload; these are for actions and for data too heavy or too
+rarely-read to poll.
+
+| Route | Notes |
+|---|---|
+| `GET /servers` · `GET /servers/:id` | Snapshot; the socket payload is richer |
+| `PUT /servers/order` | Writes config.json — also drives Discord's pickers |
+| `POST /servers/:id/start` · `/stop` · `/restart` | Must call `trackAction()` — see invariants |
+| `POST /servers/:id/toggle` | **Sets start type AND stops the server.** A kill switch, not a settings toggle |
+| `PUT /servers/:id/autostart` | Start type only. This is what a settings UI should call |
+| `POST /servers/:id/check-update` | On-demand SteamCMD check. Heavyweight: spawns a process |
+| `POST /servers/:id/update` | Responds immediately; update runs in background, progress via `updateStatus` |
+| `GET`/`PUT /servers/:id/schedule` · `/backup` · `/idle` | Per-server settings |
+| `POST /servers/:id/backup/now` | Manual backup |
+| `GET`/`PUT /servers/:id/port-forward` | Tracks whether the user has done router config |
+| `POST`/`DELETE /servers/:id/header` | Custom header image; writes `public/uploads/<id>.jpg` |
+| `PUT /servers/:id/header-preset` | One of the bundled banners |
+| `GET`/`PUT /settings` · `POST /settings/test-discord` | Discord config + the global image view option |
+| `GET /events` | Paginated event log |
+| `GET /branding` | `dashboardName` and `lanAddress` |
+
+**`/toggle` vs `/autostart` is the trap.** They look interchangeable and are not.
+`/toggle` with `enabled:false` stops the running server as a side effect. Use
+`/autostart` for anything presented to the user as a preference.
+
+**The start type does double duty.** It controls whether the service starts on
+boot *and* whether `crashDetector` is allowed to auto-restart it (it skips
+servers set to manual). They cannot be configured independently, so the UI
+presents them as one control called Auto-recovery.
+
 ## Adding things
 
 **A player query protocol** — add a `case` to the switch in `playerQuery.js`, write
@@ -175,6 +208,37 @@ selection and scroll position four times a minute.
 `server.schedule`, `server.backup`, `server.idleShutdown` and `server.version`
 straight off the poll payload. After a successful save, mutate `cachedServers`
 optimistically and re-render so the card doesn't wait a poll cycle.
+
+**The card shows state; Configure owns settings.** A chip appears when something
+needs *doing* (amber, clickable, deep-links to the fix) or when a standing
+arrangement is worth a glance. A setting that is simply on and needs nothing from
+the user does not get a chip. An earlier build put "won't auto-restart after a
+crash" on the card and it was noise — that's a setting, not a status.
+
+**`prefers-reduced-motion` is honoured, and motion is exceptional.** Only two
+things loop: the amber action-chip pulse and the border sweep on a server that is
+mid-action. Both are declared as exceptions in `design-check` with a reason.
+
+## Tooling
+
+Both scripts are **zero-dependency by design** — the Windows host has nothing
+installed but Node.
+
+```bash
+npm run design-check   # 16 rules derived from ART-DIRECTION.md; fails the build
+npm run screenshots    # captures 15 UI states at 2x into screenshots/
+```
+
+`design-check` is the one to run after any UI change. A deliberate exception is
+declared inline on the offending line and is reprinted on every run:
+
+```css
+/* design-check: allow no-loop-motion — reason goes here */
+```
+
+**If a rule is wrong, change the rule *and* the matching section of
+ART-DIRECTION.md in the same commit.** A checker that contradicts the spec trains
+you to ignore its output.
 
 ## Conventions
 

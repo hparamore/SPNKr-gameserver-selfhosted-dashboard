@@ -346,6 +346,11 @@ router.put('/settings', (req, res) => {
     if (Array.isArray(discordMutedCategories)) {
       setSetting('discordMutedCategories', JSON.stringify(discordMutedCategories));
     }
+    // View option, not a Discord setting, but this is the one generic
+    // settings endpoint and it already round-trips through getAllSettings().
+    if (req.body.showServerImages !== undefined) {
+      setSetting('showServerImages', String(req.body.showServerImages === true));
+    }
 
     res.json({ success: true, message: 'Settings saved' });
   } catch (error) {
@@ -545,6 +550,10 @@ router.put('/servers/:id/port-forward', (req, res) => {
 const UPLOAD_DIR = join(__dirname, '..', '..', 'public', 'uploads');
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 
+// Bundled banners in public/img/headers. Shipped in both webp and jpg; the
+// frontend requests webp and falls back to jpg on error.
+export const HEADER_PRESETS = ['01-forest', '02-ruins', '03-desert', '04-ice'];
+
 // POST /api/servers/:id/header — { image: "data:image/jpeg;base64,..." }
 router.post('/servers/:id/header', (req, res) => {
   try {
@@ -576,6 +585,27 @@ router.post('/servers/:id/header', (req, res) => {
   } catch (error) {
     console.error(`Error saving header image for ${req.params.id}:`, error);
     res.status(500).json({ error: 'Failed to save header image' });
+  }
+});
+
+// PUT /api/servers/:id/header-preset — { preset: "01-forest" }
+// Picks one of the bundled banners. A custom upload always wins over this, so
+// choosing a preset does not discard an image the user uploaded earlier.
+router.put('/servers/:id/header-preset', (req, res) => {
+  try {
+    const server = findServer(req.params.id);
+    if (!server) return res.status(404).json({ error: 'Server not found' });
+
+    const preset = String(req.body.preset || '');
+    if (!HEADER_PRESETS.includes(preset)) {
+      return res.status(400).json({ error: 'Unknown preset' });
+    }
+
+    setSetting(`headerPreset:${server.id}`, preset);
+    res.json({ success: true });
+  } catch (error) {
+    console.error(`Error setting header preset for ${req.params.id}:`, error);
+    res.status(500).json({ error: 'Failed to set header preset' });
   }
 });
 

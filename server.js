@@ -63,7 +63,9 @@ io.on('connection', (socket) => {
   });
 });
 
-// Resolve a server's header image to a cache-busted URL, or null if unset.
+// A custom upload, as a cache-busted URL, or null. Presets are sent separately
+// as an id so the frontend can resolve them without a round trip — the global
+// show/hide toggle is a client-side view option and must apply instantly.
 function headerImageUrl(serverId) {
   const version = getSetting(`headerImage:${serverId}`);
   return version ? `/uploads/${serverId}.jpg?v=${version}` : null;
@@ -109,7 +111,8 @@ async function pollAndEmit(target) {
           portForwarded: getSetting(`portForwarded:${server.id}`) === 'true',
           // A URL, never the image itself — this payload ships every 10s.
           // The stored value is a version stamp doubling as a cache-buster.
-          headerImage: headerImageUrl(server.id)
+          headerImage: headerImageUrl(server.id),
+          headerPreset: getSetting(`headerPreset:${server.id}`) || null
         };
       })
     );

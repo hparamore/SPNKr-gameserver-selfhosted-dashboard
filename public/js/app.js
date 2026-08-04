@@ -27,6 +27,10 @@ let cachedServers = [];
 const playerCache = {};
 let privacyMode = false;
 
+// View option, global rather than per-server. Held client-side so toggling is
+// instant; persisted through /api/settings so it survives a reload.
+let showServerImages = true;
+
 let eventOffset = 0;
 const eventLimit = 30;
 
@@ -86,7 +90,21 @@ socket.on('updateStatus', data => {
 document.addEventListener('DOMContentLoaded', () => {
   loadEvents();
   applyBranding();
+  loadViewOptions();
 });
+
+// Server images default ON: the feature should be visible without hunting for
+// a switch. Only an explicit "false" turns them off.
+async function loadViewOptions() {
+  try {
+    const settings = await (await fetch('/api/settings')).json();
+    showServerImages = settings.showServerImages !== 'false';
+  } catch {
+    showServerImages = true;
+  }
+  $('view-show-images').checked = showServerImages;
+  renderServers(cachedServers);
+}
 
 async function applyBranding() {
   try {
@@ -144,6 +162,13 @@ function buildCard(server) {
   const imageBand = el('div', 'card-image');
   const image = document.createElement('img');
   image.alt = '';
+  image.loading = 'lazy';
+  // Presets ship as webp with a jpg twin; fall back rather than show a gap on
+  // any browser that can't decode webp.
+  image.addEventListener('error', () => {
+    const src = image.getAttribute('src') || '';
+    if (src.endsWith('.webp')) image.src = src.replace(/\.webp$/, '.jpg');
+  });
   imageBand.append(image);
   imageBand.style.display = 'none';
 
@@ -309,9 +334,10 @@ function updateCard(card, server) {
   }
   card.status = state;
 
-  if (server.headerImage) {
-    if (refs.image.getAttribute('src') !== server.headerImage) {
-      refs.image.src = server.headerImage;
+  const bannerUrl = headerImageFor(server);
+  if (bannerUrl) {
+    if (refs.image.getAttribute('src') !== bannerUrl) {
+      refs.image.src = bannerUrl;
       refs.image.alt = `${server.name} header`;
     }
     refs.imageBand.style.display = '';
@@ -448,6 +474,21 @@ function setText(node, text) {
   if (node.textContent !== next) node.textContent = next;
 }
 
+/**
+ * Which banner this card shows, or null for none.
+ *
+ * Order: a custom upload always wins, then the server's chosen preset, then the
+ * global default. When images are switched off in View Options nothing renders,
+ * but the stored custom upload and preset are left untouched so turning them
+ * back on restores exactly what was there.
+ */
+function headerImageFor(server) {
+  if (!showServerImages) return null;
+  if (server.headerImage) return server.headerImage;
+  const preset = server.headerPreset || DEFAULT_PRESET;
+  return `/img/headers/${preset}.webp`;
+}
+
 function statusLabel(status) {
   return ({
     running: 'Running',
@@ -540,7 +581,7 @@ async function openConfig(id, section) {
 
   $('config-subject').textContent = server.name;
   syncPowerSection(server);
-  setHeaderPreview(server.headerImage || null);
+  syncHeaderSection(server);
 
   // Port forwarding
   $('cfg-ports-value').textContent = server.ports || 'None listed';
@@ -852,6 +893,15 @@ function renderBackupList(backups) {
 // behind it, so a wrongly-shaped result is not reachable. The image is always
 // clamped to cover the frame, so no empty gutter can be cropped either.
 
+// Bundled banners. Requested as webp with a jpg fallback wired on the element.
+const HEADER_PRESETS = [
+  { id: '01-forest', label: 'Forest' },
+  { id: '02-ruins',  label: 'Ruins'  },
+  { id: '03-desert', label: 'Desert' },
+  { id: '04-ice',    label: 'Ice'    }
+];
+const DEFAULT_PRESET = '01-forest';
+
 const CROP_ASPECT = 2.5;
 const CROP_OUT_W = 1000;          // 2x the widest card, for hi-dpi
 const CROP_OUT_H = CROP_OUT_W / CROP_ASPECT;
@@ -1004,7 +1054,7 @@ $('crop-apply').addEventListener('click', async () => {
       const server = cachedServers.find(s => s.id === id);
       if (server) server.headerImage = data.url;
       renderServers(cachedServers);
-      setHeaderPreview(data.url);
+      syncHeaderSection(server || { headerImage: data.url });
       showToast('Header image saved', 'success');
     } else {
       showToast(data.error || 'Could not save image', 'error');
@@ -1024,8 +1074,8 @@ $('cfg-header-remove').addEventListener('click', async () => {
       const server = cachedServers.find(s => s.id === id);
       if (server) server.headerImage = null;
       renderServers(cachedServers);
-      setHeaderPreview(null);
-      showToast('Header image removed', 'success');
+      if (server) syncHeaderSection(server);
+      showToast('Reverted to the default banner', 'success');
     } else {
       showToast('Could not remove image', 'error');
     }
@@ -1034,20 +1084,80 @@ $('cfg-header-remove').addEventListener('click', async () => {
   }
 });
 
-function setHeaderPreview(url) {
+// Renders the whole Header Image section for one server: the live preview, the
+// four preset swatches, and whether "Use A Default" is offered.
+function syncHeaderSection(server) {
+  const section = $('cfg-header-section');
+
+  // Nothing to configure if nothing renders.
+  section.style.display = showServerImages ? '' : 'none';
+  if (!showServerImages) return;
+
+  const hasCustom = !!server.headerImage;
+  const activePreset = server.headerPreset || DEFAULT_PRESET;
+
   const box = $('cfg-header-preview');
   box.textContent = '';
-  if (url) {
-    const img = document.createElement('img');
-    img.src = url;
-    img.alt = 'Current header image';
-    box.append(img);
-    $('cfg-header-remove').style.display = '';
-  } else {
-    box.append(el('span', 'header-preview-empty', 'No image'));
-    $('cfg-header-remove').style.display = 'none';
+  const img = document.createElement('img');
+  img.src = headerImageFor(server) || `/img/headers/${DEFAULT_PRESET}.webp`;
+  img.alt = 'Current header image';
+  img.addEventListener('error', () => {
+    if (img.src.endsWith('.webp')) img.src = img.src.replace(/\.webp$/, '.jpg');
+  });
+  box.append(img);
+
+  // Only meaningful when a custom upload is overriding the presets.
+  $('cfg-header-remove').style.display = hasCustom ? '' : 'none';
+
+  const grid = $('cfg-preset-grid');
+  grid.textContent = '';
+  for (const preset of HEADER_PRESETS) {
+    const btn = el('button', 'preset-swatch');
+    btn.type = 'button';
+    btn.dataset.preset = preset.id;
+    btn.title = preset.label;
+    btn.setAttribute('aria-label', `Use the ${preset.label} banner`);
+    // A custom image outranks presets, so none reads as selected while one is set.
+    btn.setAttribute('aria-pressed', String(!hasCustom && preset.id === activePreset));
+
+    const thumb = document.createElement('img');
+    thumb.src = `/img/headers/${preset.id}.webp`;
+    thumb.alt = '';
+    thumb.loading = 'lazy';
+    thumb.addEventListener('error', () => {
+      if (thumb.src.endsWith('.webp')) thumb.src = thumb.src.replace(/\.webp$/, '.jpg');
+    });
+    btn.append(thumb);
+    grid.append(btn);
   }
 }
+
+$('cfg-preset-grid').addEventListener('click', async e => {
+  const btn = e.target.closest('[data-preset]');
+  const id = configServerId;
+  if (!btn || !id) return;
+
+  const server = cachedServers.find(s => s.id === id);
+  // Picking a preset while a custom image is set would appear to do nothing,
+  // since custom wins. Clear it first so the choice is visible.
+  if (server && server.headerImage) {
+    await fetch(`/api/servers/${id}/header`, { method: 'DELETE' }).catch(() => {});
+    server.headerImage = null;
+  }
+
+  try {
+    const data = await put(`/api/servers/${id}/header-preset`, { preset: btn.dataset.preset });
+    if (data.success) {
+      if (server) server.headerPreset = btn.dataset.preset;
+      renderServers(cachedServers);
+      if (server) syncHeaderSection(server);
+    } else {
+      showToast('Could not set that banner', 'error');
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  }
+});
 
 // === Setup ===================================================================
 
@@ -1119,7 +1229,23 @@ $('settings-test').addEventListener('click', async () => {
 
 let draggedItem = null;
 
+$('view-show-images').addEventListener('change', async e => {
+  showServerImages = e.target.checked;
+  renderServers(cachedServers);          // instant; no round trip needed
+
+  // Keep an open config panel honest about whether the section applies.
+  const server = cachedServers.find(s => s.id === configServerId);
+  if (server) syncHeaderSection(server);
+
+  try {
+    await put('/api/settings', { showServerImages });
+  } catch {
+    showToast('Could not save that preference', 'error');
+  }
+});
+
 $('reorder-open').addEventListener('click', () => {
+  $('view-show-images').checked = showServerImages;
   const list = $('reorder-list');
   if (!cachedServers.length) return;
   list.textContent = '';

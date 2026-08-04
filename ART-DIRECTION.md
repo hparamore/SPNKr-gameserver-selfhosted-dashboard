@@ -230,6 +230,24 @@ less like an identity. The readout takes the mark's *one* signature trait — th
 diagonal — and nothing else. Solid bars also hold at a glance where 5px bores
 would close up.
 
+## Header images
+
+Optional 160px banner across the top of a card. Governed by one global view
+option; per-server choice lives in that server's Configure panel.
+
+- **Four bundled banners** ship in `public/img/headers` (forest, ruins, desert,
+  ice), each as webp with a jpg twin. The frontend requests webp and falls back
+  to jpg on error.
+- **Resolution order: custom upload → chosen preset → global default.** Turning
+  images off never discards either stored value, so turning them back on
+  restores exactly what was there.
+- **A bottom scrim** (48px, to `rgba(12,13,11,.72)`) keeps the plate reading as
+  one object rather than a photo with a card stuck underneath.
+- **Card content stays anchored to the top.** When one card in a row has a
+  banner the others stretch to match; centring their content in the leftover
+  space was tried and rejected — rows stopped lining up across the grid and it
+  read as unstructured. Empty space above the config bar is the orderly result.
+
 ## Anti-default checklist
 
 Most of this list is enforced by `npm run design-check`, which reads the CSS and

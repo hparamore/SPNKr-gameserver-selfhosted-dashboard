@@ -225,7 +225,8 @@ function buildServerPayload() {
       backup: backupFor(s.id),
       idleShutdown: parseFloat(getSetting(`idleShutdown:${s.id}`)) || null,
       portForwarded: getSetting(`portForwarded:${s.id}`) === 'true',
-      headerImage: headerImageUrl(s.id)
+      headerImage: headerImageUrl(s.id),
+      headerPreset: getSetting(`headerPreset:${s.id}`) || null
     };
   });
 }
@@ -377,6 +378,9 @@ app.put('/api/settings', (req, res) => {
   }
   if (Array.isArray(discordMutedCategories)) {
     setSetting('discordMutedCategories', JSON.stringify(discordMutedCategories));
+  }
+  if (req.body.showServerImages !== undefined) {
+    setSetting('showServerImages', String(req.body.showServerImages === true));
   }
   res.json({ success: true, message: 'Settings saved' });
 });
@@ -539,6 +543,16 @@ app.post('/api/servers/:id/header', (req, res) => {
   emitEvent(server.id, 'header.config', 'Header image updated', 'user');
   setTimeout(broadcast, 50);
   res.json({ success: true, url: `/uploads/${safeId}.jpg?v=${version}` });
+});
+
+const HEADER_PRESETS = ['01-forest', '02-ruins', '03-desert', '04-ice'];
+
+app.put('/api/servers/:id/header-preset', (req, res) => {
+  const preset = String(req.body.preset || '');
+  if (!HEADER_PRESETS.includes(preset)) return res.status(400).json({ error: 'Unknown preset' });
+  setSetting(`headerPreset:${req.params.id}`, preset);
+  setTimeout(broadcast, 50);
+  res.json({ success: true });
 });
 
 app.delete('/api/servers/:id/header', (req, res) => {

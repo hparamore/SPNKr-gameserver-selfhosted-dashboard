@@ -357,7 +357,7 @@ body > * { position: relative; z-index: 1; }
    card stuck underneath it. */
 .card-image {
   position: relative;
-  height: 200px;
+  height: 160px;
   flex-shrink: 0;
   border-bottom: 1px solid var(--rule);
   background: var(--shell-750);
@@ -375,7 +375,7 @@ body > * { position: relative; z-index: 1; }
   content: '';
   position: absolute;
   inset: auto 0 0 0;
-  height: 56px;
+  height: 48px;
   background: linear-gradient(to bottom, transparent, rgba(12, 13, 11, 0.72));
   pointer-events: none;
 }
@@ -522,15 +522,16 @@ body > * { position: relative; z-index: 1; }
 /* --- Connect block. The thing you came here to copy. --- */
 
 /* Absorbs the slack when a card in this row is taller (usually because a
-   neighbour has a header image and this one doesn't). Centring the rows inside
-   the grown block turns what was a 200px void above the config bar into even
-   breathing room, which reads as deliberate rather than broken. */
+   neighbour has a header image and this one doesn't). Content stays anchored
+   to the TOP: centring it in the leftover space was tried and read as
+   unstructured, because rows no longer lined up across the grid. Empty space
+   above the config bar is the honest, orderly result. */
 .card-connect {
   padding: 12px var(--pad);
   flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
 }
 
 .connect-row {
@@ -1163,6 +1164,39 @@ select.input:hover { border-color: var(--ink-mute); }
 .header-pick { display: inline-block; cursor: pointer; }
 #cfg-header-file:focus-visible + .header-pick,
 .header-pick:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+/* Four bundled banners, picked by clicking. Aspect matches the card band so
+   what you see is what lands there. */
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+
+.preset-swatch {
+  position: relative;
+  aspect-ratio: 2.5 / 1;
+  padding: 0;
+  border: 1px solid var(--rule-bright);
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--shell-700);
+  transition: border-color 100ms linear;
+}
+
+.preset-swatch img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.preset-swatch:hover { border-color: var(--ink-mute); }
+
+.preset-swatch[aria-pressed='true'] { border-color: var(--amber); }
+.preset-swatch[aria-pressed='true']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--amber);
+  border-radius: var(--radius);
+}
 
 .crop-frame {
   position: relative;

@@ -89,6 +89,7 @@ const fleet = [
     maxPlayers: 20,
     ports: 'UDP 19132',
     steamAppId: null,
+    updateUrl: 'https://www.minecraft.net/en-us/download/server/bedrock',
     ramMB: 2140,
     startedAt: Date.now() - 1000 * 60 * 60 * 24 * 12,
     players: { count: 5, names: ['Creeper_Hank', 'zaraaa', 'Nine', 'bloop', 'MOSSY'] },
@@ -120,6 +121,7 @@ const fleet = [
     password: null,
     maxPlayers: 4,
     ports: 'UDP 7777, TCP 7777',
+    playerQuery: false,          // exercises the "no query configured" path
     steamAppId: '1690800',
     ramMB: 0,
     startedAt: null,
@@ -220,6 +222,8 @@ function buildServerPayload() {
           }
         : null,
       steamAppId: s.steamAppId,
+      updateUrl: s.updateUrl || null,
+      playerQuery: s.playerQuery !== false,
       version: s.version,
       schedule: scheduleFor(s.id),
       backup: backupFor(s.id),
@@ -439,6 +443,19 @@ app.post('/api/servers/:id/restart', (req, res) => {
   transition(server, [['stopping', 300], ['starting', 2000], ['running', 2600]]);
   emitEvent(server.id, 'server.restarted', `${server.name} restarted by user`, 'user');
   res.json({ success: true, message: 'Restarted' });
+});
+
+app.post('/api/servers/:id/check-update', async (req, res) => {
+  const server = byId(req.params.id);
+  if (!server) return res.status(404).json({ error: 'Server not found' });
+  if (!server.steamAppId) {
+    return res.status(400).json({ error: 'Not a SteamCMD game — this server updates manually' });
+  }
+  // Real SteamCMD takes seconds; simulate that so the UI's busy state is real.
+  await new Promise(r => setTimeout(r, 1800));
+  emitEvent(server.id, 'update.available',
+    server.version?.updateAvailable ? 'Update available' : 'Already up to date', 'updater');
+  res.json({ success: true, ...(server.version || {}) });
 });
 
 app.post('/api/servers/:id/update', (req, res) => {

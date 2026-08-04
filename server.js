@@ -102,6 +102,11 @@ async function pollAndEmit(target) {
           ports: server.ports,
           process: processStats,
           steamAppId: server.steamAppId || null,
+          // Where a non-SteamCMD game gets its updates, if the config says.
+          updateUrl: server.updateUrl || null,
+          // Distinguishes "no query configured for this game" from "the query
+          // failed" — both otherwise render as an identical em dash.
+          playerQuery: !!(server.queryProtocol && server.queryPort),
           version: versionInfo,
           schedule: schedules[server.id] || null,
           backup: backupConfigs[server.id] || null,

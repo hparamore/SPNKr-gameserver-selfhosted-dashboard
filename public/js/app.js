@@ -374,9 +374,20 @@ function updateCard(card, server) {
   refs.players.className = 'stat-value' +
     (count > 0 ? ' has-players' : count === null || count === undefined ? ' is-empty' : '');
 
+  // An em dash means "we don't know", but there are two very different reasons
+  // for that and they used to look identical. Say which.
   const names = pd && pd.playerNames && pd.playerNames.length ? pd.playerNames.join(', ') : '';
-  if (names) refs.players.title = names;
-  else refs.players.removeAttribute('title');
+  if (names) {
+    refs.players.title = names;
+  } else if (count === null || count === undefined) {
+    refs.players.title = server.playerQuery === false
+      ? 'This game has no player query configured, so player counts are unavailable'
+      : server.status === 'running'
+        ? 'Player query did not answer — the server may still be starting up'
+        : 'Server is stopped';
+  } else {
+    refs.players.removeAttribute('title');
+  }
 
   const proc = server.process || {};
   setText(refs.ram, proc.ramFormatted || '—');
@@ -591,23 +602,7 @@ async function openConfig(id, section) {
   $('cfg-lan-value').textContent = lanAddress || 'this machine';
   $('cfg-ports-done').checked = !!server.portForwarded;
 
-  // Version section
-  const ver = server.version;
-  const updateBtn = $('cfg-update-btn');
-  const verText = $('cfg-version-text');
-  if (ver && ver.updateAvailable) {
-    verText.textContent = `Installed build ${ver.installedBuild || '—'} · build ${ver.latestBuild} available.`;
-    updateBtn.style.display = '';
-  } else if (ver && ver.installedBuild) {
-    verText.textContent = `Installed build ${ver.installedBuild}. Up to date.`;
-    updateBtn.style.display = 'none';
-  } else if (server.steamAppId) {
-    verText.textContent = 'Checking for updates…';
-    updateBtn.style.display = 'none';
-  } else {
-    verText.textContent = 'Not a SteamCMD game — updates are managed manually.';
-    updateBtn.style.display = 'none';
-  }
+  syncVersionSection(server);
 
   // Schedule
   try {
@@ -692,6 +687,86 @@ function revealSection(section) {
     setTimeout(() => node.classList.remove('flagged'), 1800);
   }, 0);
 }
+
+/**
+ * Game Version section. Three kinds of server need different affordances:
+ *
+ *   SteamCMD games      — build numbers, a manual check, and one-click update.
+ *   Non-Steam with a URL— nothing automatable, so link where updates come from.
+ *   Non-Steam, no URL   — say so plainly rather than leave a bare dash.
+ */
+function syncVersionSection(server) {
+  const ver = server.version;
+  const text = $('cfg-version-text');
+  const updateBtn = $('cfg-update-btn');
+  const checkBtn = $('cfg-check-btn');
+  const link = $('cfg-update-link');
+
+  const isSteam = !!server.steamAppId;
+  checkBtn.style.display = isSteam ? '' : 'none';
+  updateBtn.style.display = isSteam && ver && ver.updateAvailable ? '' : 'none';
+
+  if (server.updateUrl) {
+    link.href = server.updateUrl;
+    link.style.display = '';
+  } else {
+    link.style.display = 'none';
+  }
+
+  if (ver && ver.updateAvailable) {
+    text.textContent =
+      `Installed build ${ver.installedBuild || '—'} · build ${ver.latestBuild} available.`;
+  } else if (ver && ver.installedBuild) {
+    text.textContent = `Installed build ${ver.installedBuild}. Up to date.`;
+  } else if (isSteam) {
+    text.textContent = 'No build information yet. Check Now to query SteamCMD.';
+  } else if (server.updateUrl) {
+    text.textContent = 'Updates for this game are installed manually.';
+  } else {
+    text.textContent =
+      'Not a SteamCMD game. Updates are manual — add an "updateUrl" to this ' +
+      'server in config.json to link them here.';
+  }
+}
+
+// SteamCMD can take several seconds, so the button owns a real busy state
+// rather than leaving the user wondering whether the click registered.
+$('cfg-check-btn').addEventListener('click', async () => {
+  const id = configServerId;
+  if (!id) return;
+
+  const btn = $('cfg-check-btn');
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Checking…';
+
+  try {
+    const res = await fetch(`/api/servers/${id}/check-update`, { method: 'POST' });
+    const data = await res.json();
+
+    if (data.success) {
+      const server = cachedServers.find(s => s.id === id);
+      if (server) {
+        server.version = {
+          installedBuild: data.installedBuild ?? (server.version || {}).installedBuild ?? null,
+          latestBuild: data.latestBuild ?? null,
+          updateAvailable: !!data.updateAvailable
+        };
+        syncVersionSection(server);
+        renderServers(cachedServers);
+      }
+      showToast(data.updateAvailable ? 'Update available' : 'Already up to date',
+        data.updateAvailable ? 'info' : 'success');
+    } else {
+      showToast(data.error || 'Could not check for updates', 'error');
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+});
 
 function syncCustom(presetId, groupId) {
   $(groupId).style.display = $(presetId).value === 'custom' ? 'block' : 'none';

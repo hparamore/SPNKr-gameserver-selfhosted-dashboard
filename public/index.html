@@ -225,10 +225,15 @@
         <div class="cfg-section" id="cfg-version-section">
           <div class="cfg-head">
             <span class="cfg-title">Game Version</span>
-            <button class="btn btn-sm btn-primary" id="cfg-update-btn" type="button"
-                    style="display:none">Install Update</button>
+            <div style="display:flex; gap:8px">
+              <button class="btn btn-sm" id="cfg-check-btn" type="button">Check Now</button>
+              <button class="btn btn-sm btn-primary" id="cfg-update-btn" type="button"
+                      style="display:none">Install Update</button>
+            </div>
           </div>
           <p class="hint" id="cfg-version-text">&mdash;</p>
+          <a class="link" id="cfg-update-link" href="#" target="_blank" rel="noopener"
+             style="display:none; font-size:14px">Where to get updates &rarr;</a>
         </div>
 
         <div class="cfg-section">

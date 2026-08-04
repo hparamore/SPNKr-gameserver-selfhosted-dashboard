@@ -435,6 +435,33 @@ router.get('/servers/:id/version', async (req, res) => {
   }
 });
 
+// POST /api/servers/:id/check-update — check for a new build right now.
+// The scheduled checker only runs twice daily, which is fine for background
+// awareness but useless when a game has just patched and you want to know.
+// HEAVYWEIGHT: spawns SteamCMD, so it can take several seconds.
+router.post('/servers/:id/check-update', async (req, res) => {
+  try {
+    const server = findServer(req.params.id);
+    if (!server) return res.status(404).json({ error: 'Server not found' });
+
+    if (!server.steamAppId) {
+      return res.status(400).json({
+        error: 'Not a SteamCMD game — this server updates manually'
+      });
+    }
+
+    const info = await checkForUpdate(server);
+    if (!info) {
+      return res.status(503).json({ error: 'SteamCMD is busy or unreachable. Try again shortly.' });
+    }
+
+    res.json({ success: true, ...info });
+  } catch (error) {
+    console.error(`Error checking for update for ${req.params.id}:`, error);
+    res.status(500).json({ error: 'Failed to check for updates' });
+  }
+});
+
 // POST /api/servers/:id/update — trigger SteamCMD update
 router.post('/servers/:id/update', async (req, res) => {
   try {

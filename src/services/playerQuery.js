@@ -268,11 +268,18 @@ async function queryUDPEndpoint(port) {
       `(Get-NetUDPEndpoint -LocalPort ${port} -ErrorAction SilentlyContinue | Measure-Object).Count`
     );
 
-    if (!result) return { playerCount: 0, maxPlayers: null, players: [], serverName: null };
+    // runPS resolves null when PowerShell errors out. That is "unknown", NOT
+    // "nobody is connected" — returning 0 here reported a populated server as
+    // confirmed-empty, and idleMonitor shuts down confirmed-empty servers.
+    // A transient PowerShell failure could therefore kick players off a running
+    // game. See the null-vs-zero invariant in AGENTS.md.
+    if (!result) return null;
 
     const count = parseInt(result, 10);
+    if (isNaN(count)) return null;      // unparseable output is also unknown
+
     // Subtract 1 for the server's own listening socket
-    const playerCount = isNaN(count) ? 0 : Math.max(0, count - 1);
+    const playerCount = Math.max(0, count - 1);
 
     return {
       playerCount,

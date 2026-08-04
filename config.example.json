@@ -1,6 +1,8 @@
 {
   "_comment": "Copy this file to config.json and edit it. config.json is gitignored because it holds your IPs and server passwords. The 'servers' array starts empty — add entries as you install games (see docs/ADDING_GAMES.md). An example Valheim entry is included below, commented out via the _example key.",
 
+  "_optionalServerKeys": "staticVersion — a version string to display for games with no SteamCMD build id. updateUrl — where updates come from for a game you patch by hand; linked from that server's Configure panel. queryProtocol + queryPort — omit BOTH if the game has no player query, and the card will say counts are unavailable instead of showing what looks like a failed lookup.",
+
   "dashboardName": "Game Servers",
   "dashboardPort": 8080,
   "pollIntervalMs": 10000,
@@ -35,6 +37,8 @@
     "maxPlayers": 10,
     "logFile": "C:\\GameServers\\Valheim\\logs\\service.log",
     "gameInfoFile": null,
+    "staticVersion": null,
+    "updateUrl": null,
     "autoUpdate": true,
     "remoteAccess": true,
     "enabled": true

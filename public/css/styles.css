@@ -1362,6 +1362,18 @@ select.input:hover { border-color: var(--ink-mute); }
   .sys-value { font-size: 11px; }
 }
 
+/* The rule above wants brand and tools on one row. Shortening the tagline to
+   "Game server control" buys enough width for that on a large phone (430px),
+   but not on a 393 or 375 — brand + tools is ~394px and the tagline is the only
+   part that can give. It's the least load-bearing thing in the header: the mark
+   is right beside it and you know which app you opened.
+   Hidden below 480 rather than 400 so it doesn't hinge on a few pixels of
+   font rendering, which varies between iOS Safari and the desktop browsers
+   this was measured in. */
+@media (max-width: 480px) {
+  .tagline { display: none; }
+}
+
 @media (max-width: 620px) {
   .server-grid { grid-template-columns: 1fr; padding: 12px; gap: 10px; }
   .game-name { font-size: 26px; }

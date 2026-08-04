@@ -2,6 +2,30 @@
 
 Notable changes to this project. Dates are when the change reached `main`.
 
+## 1.1.3 — 2026-08-04
+
+### Changed
+
+- **Tagline shortened to "Game server control."** "Self-hosted" described the
+  product to someone deciding whether to install it, which is the README's job;
+  in the header of a dashboard you already run, it was 72px of width doing no
+  work.
+
+- **The tagline is hidden below 480px.** The topbar's responsive rule intends
+  brand and tools to share the first row, with the stat rack full-width beneath
+  — the comment in the CSS says so. At 430px the brand was 264px against 202px
+  of tools, so the tools fell to a third row and sat right-aligned against empty
+  space. Shortening the tagline fixes a 430px phone; it does not fix a 393 or a
+  375, where brand + tools still comes to ~394px. The tagline is the least
+  load-bearing element in the header — the mark is beside it — so it goes.
+
+  Hidden below 480 rather than 400 deliberately: the margin at 430 would
+  otherwise be ~36px and depend on iOS Safari rendering text at the same width
+  as the desktop browser these measurements were taken in.
+
+  Verified two header rows and zero overflow at 375, 393, 430; desktop keeps the
+  tagline.
+
 ## 1.1.2 — 2026-08-04
 
 ### Fixed

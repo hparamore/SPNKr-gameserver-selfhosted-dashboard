@@ -60,10 +60,18 @@ to resolve.
 
 ## How data flows
 
-**Status (10s loop, `pollAndEmit` in server.js)** — for each enabled server, query
-NSSM status + process stats + start type, merge in cached version info and
-schedule/backup/idle state, emit `serverUpdate` over Socket.IO. Also runs crash
-detection.
+**Status (10s loop, `pollAndEmit` in server.js)** — one batched `Get-Service` call
+(status + start type for every service) and one batched `Win32_Process` call
+(every game process), merged per server with cached version info and
+schedule/backup/idle state, then emitted as `serverUpdate` over Socket.IO. Also
+runs crash detection.
+
+The per-server `getServiceStatus()` / `getProcessStats()` / `getServiceStartType()`
+still exist for on-demand callers (API, Discord bot, idle monitor, scheduler). **The
+loop must not go back to calling them per server.** Each is a `cmd.exe` +
+`powershell.exe` spawn; nine servers × three calls every 10s kept a standing pile of
+PowerShell processes that starved the BELOW_NORMAL-priority game servers of CPU —
+enough to hold Valheim under the FPS floor its server-side mod needs to run at all.
 
 **Players (30s loop, `pollPlayers`)** — separate from status because game queries can
 block on timeouts and would stall the status loop. Emits `playerUpdate`, fires

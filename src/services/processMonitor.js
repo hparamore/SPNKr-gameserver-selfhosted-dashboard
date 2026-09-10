@@ -2,6 +2,13 @@
 // Uses PowerShell Win32_Process and Win32_OperatingSystem to gather metrics.
 // Win32_Process is used instead of Get-Process because service processes run
 // under SYSTEM and Get-Process can't access their StartTime/CPU as a regular user.
+//
+// Every runPS() call spawns cmd.exe + powershell.exe (~1s of CPU on a loaded box).
+// The 10s status loop used to issue one per server; with nine servers that was a
+// permanent pile of PowerShell processes competing with the game servers for CPU —
+// enough to starve a BELOW_NORMAL-priority Valheim below its mod's FPS floor.
+// The loop now uses the batched getAllProcessStats() / one-shot getSystemStats().
+// The single-process getProcessStats() stays for on-demand callers (API, Discord).
 
 import { runPS } from '../utils/powershell.js';
 
@@ -21,28 +28,7 @@ export async function getProcessStats(processName) {
   try {
     const proc = JSON.parse(result);
     if (!proc || proc.ProcessId === undefined) return null;
-
-    const ramBytes = proc.WorkingSetSize || 0;
-    const ramMB = Math.round(ramBytes / 1024 / 1024);
-
-    // Calculate uptime from CreationDate
-    let uptime = null;
-    if (proc.CreationDate) {
-      // PowerShell serializes dates as "/Date(timestamp)/" in JSON
-      const match = String(proc.CreationDate).match(/\/Date\((\d+)\)\//);
-      if (match) {
-        const startMs = parseInt(match[1], 10);
-        uptime = Date.now() - startMs;
-      }
-    }
-
-    return {
-      pid: proc.ProcessId,
-      ramMB,
-      ramFormatted: formatRAM(ramBytes),
-      uptimeMs: uptime,
-      uptimeFormatted: uptime ? formatUptime(uptime) : null
-    };
+    return statsFromProc(proc);
   } catch (e) {
     console.error(`Failed to parse process stats for ${processName}:`, e.message);
     return null;
@@ -50,87 +36,144 @@ export async function getProcessStats(processName) {
 }
 
 /**
- * Get overall system CPU, RAM, and disk usage.
+ * Stats for many processes in ONE PowerShell call.
+ * Returns a Map of processName -> stats (same shape as getProcessStats), with
+ * no entry for processes that aren't running. Returns an empty Map if the
+ * query itself fails, so callers fail soft to "no process info".
+ *
+ * Two servers can share a processName (both Valheim worlds run
+ * valheim_server.exe). Like getProcessStats, this keeps the first instance
+ * seen per name — the cards for those servers show the same process either way.
+ */
+export async function getAllProcessStats(processNames) {
+  const names = [...new Set(processNames.filter(Boolean))];
+  const stats = new Map();
+  if (names.length === 0) return stats;
+
+  const filter = names.map(n => `Name='${n}.exe'`).join(' OR ');
+  const result = await runPS(
+    `Get-CimInstance Win32_Process -Filter "${filter}" -ErrorAction SilentlyContinue | ` +
+    `Select-Object ProcessId, Name, WorkingSetSize, CreationDate | ` +
+    `ConvertTo-Json -Compress`
+  );
+  if (!result) return stats;
+
+  try {
+    // ConvertTo-Json emits a bare object for a single match, an array otherwise
+    const parsed = JSON.parse(result);
+    const procs = Array.isArray(parsed) ? parsed : [parsed];
+    for (const proc of procs) {
+      if (!proc || proc.ProcessId === undefined || !proc.Name) continue;
+      const name = proc.Name.replace(/\.exe$/i, '');
+      if (!stats.has(name)) stats.set(name, statsFromProc(proc));
+    }
+  } catch (e) {
+    console.error('Failed to parse batched process stats:', e.message);
+  }
+  return stats;
+}
+
+/**
+ * Get overall system CPU, RAM, and disk usage — one PowerShell call for all three.
  */
 export async function getSystemStats() {
-  // Run CPU and memory queries in parallel
-  const [cpuResult, memResult, diskResult] = await Promise.all([
-    runPS(`(Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average`),
-    runPS(
-      `Get-CimInstance Win32_OperatingSystem | ` +
-      `Select-Object FreePhysicalMemory, TotalVisibleMemorySize | ` +
-      `ConvertTo-Json -Compress`
-    ),
-    runPS(
-      `Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'" | ` +
-      `Select-Object Size, FreeSpace | ` +
-      `ConvertTo-Json -Compress`
-    )
-  ]);
+  const result = await runPS(
+    `$cpu = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average; ` +
+    `$os = Get-CimInstance Win32_OperatingSystem; ` +
+    `$disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'"; ` +
+    `@{ cpu = $cpu; FreePhysicalMemory = $os.FreePhysicalMemory; TotalVisibleMemorySize = $os.TotalVisibleMemorySize; ` +
+    `Size = $disk.Size; FreeSpace = $disk.FreeSpace } | ConvertTo-Json -Compress`
+  );
 
   const stats = {
     cpu: null,
     ram: null,
     disk: null
   };
+  if (!result) return stats;
+
+  let raw;
+  try {
+    raw = JSON.parse(result);
+  } catch (e) {
+    console.error('Failed to parse system stats:', e.message);
+    return stats;
+  }
 
   // CPU percentage
-  if (cpuResult) {
+  if (raw.cpu !== null && raw.cpu !== undefined) {
     stats.cpu = {
-      percent: parseInt(cpuResult, 10) || 0
+      percent: parseInt(raw.cpu, 10) || 0
     };
   }
 
   // RAM usage
-  if (memResult) {
-    try {
-      const mem = JSON.parse(memResult);
-      const totalKB = mem.TotalVisibleMemorySize || 0;
-      const freeKB = mem.FreePhysicalMemory || 0;
-      const usedKB = totalKB - freeKB;
-      const totalGB = Math.round(totalKB / 1024 / 1024 * 10) / 10;
-      const usedGB = Math.round(usedKB / 1024 / 1024 * 10) / 10;
-      const percent = totalKB > 0 ? Math.round(usedKB / totalKB * 100) : 0;
+  const totalKB = raw.TotalVisibleMemorySize || 0;
+  if (totalKB > 0) {
+    const freeKB = raw.FreePhysicalMemory || 0;
+    const usedKB = totalKB - freeKB;
+    const totalGB = Math.round(totalKB / 1024 / 1024 * 10) / 10;
+    const usedGB = Math.round(usedKB / 1024 / 1024 * 10) / 10;
+    const percent = Math.round(usedKB / totalKB * 100);
 
-      stats.ram = {
-        totalGB,
-        usedGB,
-        percent,
-        formatted: formatCapacity(usedGB, totalGB)
-      };
-    } catch (e) {
-      console.error('Failed to parse RAM stats:', e.message);
-    }
+    stats.ram = {
+      totalGB,
+      usedGB,
+      percent,
+      formatted: formatCapacity(usedGB, totalGB)
+    };
   }
 
   // Disk usage (C: drive)
-  if (diskResult) {
-    try {
-      const disk = JSON.parse(diskResult);
-      const totalBytes = disk.Size || 0;
-      const freeBytes = disk.FreeSpace || 0;
-      const usedBytes = totalBytes - freeBytes;
-      const totalGB = Math.round(totalBytes / 1024 / 1024 / 1024 * 10) / 10;
-      const usedGB = Math.round(usedBytes / 1024 / 1024 / 1024 * 10) / 10;
-      const freeGB = Math.round(freeBytes / 1024 / 1024 / 1024 * 10) / 10;
-      const percent = totalBytes > 0 ? Math.round(usedBytes / totalBytes * 100) : 0;
+  const totalBytes = raw.Size || 0;
+  if (totalBytes > 0) {
+    const freeBytes = raw.FreeSpace || 0;
+    const usedBytes = totalBytes - freeBytes;
+    const totalGB = Math.round(totalBytes / 1024 / 1024 / 1024 * 10) / 10;
+    const usedGB = Math.round(usedBytes / 1024 / 1024 / 1024 * 10) / 10;
+    const freeGB = Math.round(freeBytes / 1024 / 1024 / 1024 * 10) / 10;
+    const percent = Math.round(usedBytes / totalBytes * 100);
 
-      stats.disk = {
-        totalGB,
-        usedGB,
-        freeGB,
-        percent,
-        formatted: formatCapacity(usedGB, totalGB)
-      };
-    } catch (e) {
-      console.error('Failed to parse disk stats:', e.message);
-    }
+    stats.disk = {
+      totalGB,
+      usedGB,
+      freeGB,
+      percent,
+      formatted: formatCapacity(usedGB, totalGB)
+    };
   }
 
   return stats;
 }
 
-// --- Formatting helpers ---
+// --- Helpers ---
+
+/**
+ * Turn a Win32_Process row into the stats shape the cards render.
+ */
+function statsFromProc(proc) {
+  const ramBytes = proc.WorkingSetSize || 0;
+  const ramMB = Math.round(ramBytes / 1024 / 1024);
+
+  // Calculate uptime from CreationDate
+  let uptime = null;
+  if (proc.CreationDate) {
+    // PowerShell serializes dates as "/Date(timestamp)/" in JSON
+    const match = String(proc.CreationDate).match(/\/Date\((\d+)\)\//);
+    if (match) {
+      const startMs = parseInt(match[1], 10);
+      uptime = Date.now() - startMs;
+    }
+  }
+
+  return {
+    pid: proc.ProcessId,
+    ramMB,
+    ramFormatted: formatRAM(ramBytes),
+    uptimeMs: uptime,
+    uptimeFormatted: uptime ? formatUptime(uptime) : null
+  };
+}
 
 /**
  * "used / total" for a capacity readout, switching to TB past 1000 GB.

@@ -2,6 +2,24 @@
 
 Notable changes to this project. Dates are when the change reached `main`.
 
+## 1.2.1 — 2026-09-09
+
+### Fixed
+
+- **The status loop no longer spawns a PowerShell per server per query.** Each
+  10s cycle asked NSSM for status, process stats and start type for every server —
+  three `cmd.exe` + `powershell.exe` spawns each, ~30 on a nine-server install —
+  and under load they overlapped into a standing pile of 20–30 PowerShell
+  processes. That was enough CPU to starve the BELOW_NORMAL-priority game
+  servers: Valheim sat under the 10 FPS floor its server-side mod requires, so the
+  mod loaded cleanly and silently applied nothing.
+
+  `pollAndEmit` now makes one `Get-Service` call (status + start type for every
+  service) and one `Win32_Process` call (every game process). System CPU/RAM/disk
+  is one call instead of three. Roughly 30 spawns per cycle become 3. The
+  per-server helpers remain for on-demand callers, and the socket payload is
+  unchanged.
+
 ## 1.2.0 — 2026-08-04
 
 ### Added

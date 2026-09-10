@@ -101,6 +101,53 @@ export async function pollAllStatuses(servers) {
 }
 
 /**
+ * Status AND start type for many services in ONE PowerShell call.
+ * Returns a Map of serviceName -> { status, startType }, with no entry for a
+ * service Windows doesn't know about. Returns an empty Map if the query fails,
+ * so the poll loop falls back to 'unknown' / 'auto' rather than stalling.
+ *
+ * This is what the 10s status loop uses. getServiceStatus() and
+ * getServiceStartType() each cost a PowerShell spawn per call, and the loop was
+ * paying that twice per server every cycle. Get-Service reads both fields for
+ * every service at once, unelevated, and reports the same states NSSM does.
+ */
+export async function getAllServiceStates(serviceNames) {
+  const names = [...new Set(serviceNames.filter(Boolean))];
+  const states = new Map();
+  if (names.length === 0) return states;
+
+  const list = names.map(n => `'${n}'`).join(',');
+  // Enumerate-then-filter rather than `Get-Service -Name a,b,c`: a name Windows
+  // doesn't know (a server configured before its service is registered) makes
+  // Get-Service set $? false even under SilentlyContinue, powershell.exe exits 1,
+  // and exec() reports the whole batch as failed.
+  const raw = await runPS(
+    `$names = @(${list}); ` +
+    `Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Name -in $names } | ` +
+    // .ToString() — otherwise ConvertTo-Json emits the enums as bare numbers
+    `Select-Object Name, @{n='Status';e={$_.Status.ToString()}}, @{n='StartType';e={$_.StartType.ToString()}} | ` +
+    `ConvertTo-Json -Compress`
+  );
+  if (!raw) return states;
+
+  try {
+    // ConvertTo-Json emits a bare object for a single service, an array otherwise
+    const parsed = JSON.parse(raw);
+    const rows = Array.isArray(parsed) ? parsed : [parsed];
+    for (const row of rows) {
+      if (!row || !row.Name) continue;
+      states.set(row.Name, {
+        status: parseServiceControllerStatus(row.Status),
+        startType: /^(Manual|Disabled)$/i.test(row.StartType || '') ? 'manual' : 'auto'
+      });
+    }
+  } catch (e) {
+    console.error('Failed to parse batched service states:', e.message);
+  }
+  return states;
+}
+
+/**
  * Get the NSSM service start type (auto or manual).
  * 'auto' means the service starts on boot. 'manual' means it won't.
  */
@@ -139,6 +186,23 @@ function parseStatus(nssmStatus) {
   if (s.includes('SERVICE_CONTINUE_PENDING')) return 'starting';
   if (s.includes('SERVICE_PAUSE_PENDING')) return 'stopping';
   return 'unknown';
+}
+
+/**
+ * Get-Service reports ServiceControllerStatus names rather than NSSM's
+ * SERVICE_* constants; map them onto the same vocabulary parseStatus() returns.
+ */
+function parseServiceControllerStatus(status) {
+  switch (String(status || '')) {
+    case 'Running': return 'running';
+    case 'Stopped': return 'stopped';
+    case 'Paused': return 'paused';
+    case 'StartPending': return 'starting';
+    case 'ContinuePending': return 'starting';
+    case 'StopPending': return 'stopping';
+    case 'PausePending': return 'stopping';
+    default: return 'unknown';
+  }
 }
 
 function sleep(ms) {

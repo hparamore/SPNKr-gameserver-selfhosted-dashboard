@@ -8,8 +8,8 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import apiRoutes from './src/routes/api.js';
 import { loadConfig, getNetwork, getDashboardName } from './src/utils/config.js';
-import { getServiceStatus, getServiceStartType } from './src/services/serverManager.js';
-import { getProcessStats, getSystemStats } from './src/services/processMonitor.js';
+import { getAllServiceStates } from './src/services/serverManager.js';
+import { getAllProcessStats, getSystemStats } from './src/services/processMonitor.js';
 import { init as initDatabase, pruneEvents, setSetting, getSetting } from './src/db/database.js';
 import { initDiscordBot } from './src/services/discordBot.js';
 import { checkIdleServers, getIdleTimeout } from './src/services/idleMonitor.js';
@@ -79,13 +79,21 @@ async function pollAndEmit(target) {
     const schedules = getActiveSchedules();
     const backupConfigs = getActiveBackupConfigs();
 
+    // One PowerShell call for every service's status + start type and one for
+    // every game process — not three spawns per server per cycle. See the note
+    // at the top of processMonitor.js for why that mattered.
+    const [serviceStates, processStatsByName] = await Promise.all([
+      getAllServiceStates(servers.map(s => s.serviceName)),
+      getAllProcessStats(servers.map(s => s.processName))
+    ]);
+
     const serverData = await Promise.all(
       servers.map(async (server) => {
-        const [status, processStats, startType] = await Promise.all([
-          getServiceStatus(server.serviceName),
-          getProcessStats(server.processName),
-          getServiceStartType(server.serviceName)
-        ]);
+        // A service missing from the batch (query failed, or not registered yet)
+        // reads as unknown/auto — the same fallback the single-service calls use.
+        const { status, startType } =
+          serviceStates.get(server.serviceName) || { status: 'unknown', startType: 'auto' };
+        const processStats = processStatsByName.get(server.processName) || null;
 
         // Include cached version info (doesn't trigger a SteamCMD check)
         const versionInfo = getCachedVersionInfo(server.id);

@@ -109,6 +109,13 @@ once and quietly destroyed every new backup for weeks.
 **`processName` is the real process, not the launcher.** Unreal-based servers spawn
 `*-Win64-Shipping-Cmd.exe` from a small wrapper. See docs/ADDING_GAMES.md step 4.
 
+**`installPath` must be the server's own folder.** `check-update` reads the ACF manifest
+under it and `update` runs SteamCMD against it. A second server created by copying an
+install (two Valheim worlds, say) that keeps the original's `installPath` will report
+the *other* install's build as its own and update the wrong folder — with a clean
+success message. That shipped once: one world sat on an old game version for a day while
+the dashboard said it was current. When you copy an install, change `installPath`.
+
 **Server `id` is a database key.** Schedules, backups, and settings are keyed on it.
 Changing an `id` orphans that data.
 

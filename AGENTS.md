@@ -65,6 +65,10 @@ to resolve.
 (every game process), merged per server with cached version info and
 schedule/backup/idle state, then emitted as `serverUpdate` over Socket.IO. Also
 runs crash detection.
+System CPU/RAM/disk is **not** fetched in this loop: `refreshSystemStats()` runs on
+its own 60s timer and the loop emits the cached value. The CPU query alone is ~1.1s of
+WMI sampling per fresh PowerShell process (no cheaper counter exists without a 6s
+warm-up), and on that exact 10s cadence it was felt in-game as a periodic stutter.
 
 The per-server `getServiceStatus()` / `getProcessStats()` / `getServiceStartType()`
 still exist for on-demand callers (API, Discord bot, idle monitor, scheduler). **The

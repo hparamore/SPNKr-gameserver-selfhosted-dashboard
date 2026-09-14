@@ -71,6 +71,20 @@ function headerImageUrl(serverId) {
   return version ? `/uploads/${serverId}.jpg?v=${version}` : null;
 }
 
+// System CPU/RAM/disk on its own, slower clock. The CPU figure comes from
+// Win32_Processor.LoadPercentage, which costs ~1.1s of WMI sampling in a fresh
+// PowerShell process — cheaper counters need a 6s provider warm-up per process,
+// so there is no fast query, only a rarer one. Players on the Valheim server
+// reported a stutter on the status loop's exact 10s cadence; this takes the
+// heaviest query off that loop. The status payload just reuses the last value.
+let cachedSystemStats = { cpu: null, ram: null, disk: null };
+async function refreshSystemStats() {
+  try { cachedSystemStats = await getSystemStats(); }
+  catch (error) { console.error('System stats error:', error); }
+}
+refreshSystemStats();
+setInterval(refreshSystemStats, 60000);
+
 // Poll all servers and emit updates
 async function pollAndEmit(target) {
   try {
@@ -130,7 +144,7 @@ async function pollAndEmit(target) {
       })
     );
 
-    const systemStats = await getSystemStats();
+    const systemStats = cachedSystemStats;
 
     // Check for crashes (only on broadcast polls, not initial socket connects)
     if (target === io) {
